@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import VoiceSearchForm from './VoiceSearchForm';
 
+export const instant = false;
+
 type SongsPageProps = {
   searchParams: Promise<{
     language?: string;
