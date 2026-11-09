@@ -1,10 +1,14 @@
 
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { connection } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import SongManager from './SongManager';
 
 export default async function ManageSongsPage() {
+  // Wait until an incoming request is available.
+  await connection();
+
   const supabase = await createClient();
 
   const {
