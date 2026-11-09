@@ -5,6 +5,8 @@ import { connection } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import SongManager from './SongManager';
 
+export const instant = false;
+
 export default async function ManageSongsPage() {
   // Wait until an incoming request is available.
   await connection();
