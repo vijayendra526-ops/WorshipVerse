@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import VoiceSearchForm from './VoiceSearchForm';
+import DownloadAllSongs from './DownloadAllSongs';
 
 export const instant = false;
 
@@ -100,6 +101,7 @@ export default async function SongsPage({ searchParams }: SongsPageProps) {
   language={selectedLanguage}
   initialQuery={search}
 />
+<DownloadAllSongs />
 
         <div className="mt-8">
           {error ? (
