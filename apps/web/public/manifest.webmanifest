@@ -1,0 +1,27 @@
+
+{
+  "id": "/",
+  "name": "WorshipVerse - Sharon A.G. Church",
+  "short_name": "WorshipVerse",
+  "description": "Telugu and English Christian worship songs and lyrics.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#24103F",
+  "theme_color": "#32165C",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
