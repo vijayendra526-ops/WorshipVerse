@@ -17,10 +17,16 @@ export default async function AdminPage() {
 
   const role = user.app_metadata?.role;
 
+  console.log('ADMIN DEBUG:', {
+    email: user.email,
+    role: user.app_metadata?.role,
+  });
+
   if (role !== 'admin' && role !== 'super_admin') {
     redirect('/');
   }
 
+  
   const [
     { count: totalSongs },
     { count: teluguSongs },
