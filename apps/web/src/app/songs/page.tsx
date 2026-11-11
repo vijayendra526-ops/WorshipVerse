@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import VoiceSearchForm from './VoiceSearchForm';
 import DownloadAllSongs from './DownloadAllSongs';
+import FavouriteButton from './FavouriteButton';
 
 export const instant = false;
 
@@ -115,13 +116,21 @@ export default async function SongsPage({ searchParams }: SongsPageProps) {
                   key={song.id}
                   className="rounded-2xl border border-[#E8E0D2] bg-white p-6 shadow-sm"
                 >
-                  <h2 className="text-xl font-bold">{song.title}</h2>
+                  <div className="flex items-start justify-between gap-3">
+  <div>
+    <h2 className="text-xl font-bold">{song.title}</h2>
 
-                  {song.artist && (
-                    <p className="mt-1 text-sm text-gray-500">
-                      {song.artist}
-                    </p>
-                  )}
+    {song.artist && (
+      <p className="mt-1 text-sm text-gray-500">
+        {song.artist}
+      </p>
+    )}
+  </div>
+
+  <FavouriteButton songId={song.id} />
+</div>
+                  
+
 
                   <details className="mt-5">
                     <summary className="cursor-pointer font-semibold text-[#6B4A91]">

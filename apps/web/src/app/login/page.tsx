@@ -1,11 +1,37 @@
 'use client';
 
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const supabase = createClient();
+  const router = useRouter();
+
+useEffect(() => {
+  let active = true;
+
+  async function checkSession() {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!active || !user) return;
+
+    const role = user.app_metadata?.role;
+
+    router.replace(
+      role === 'admin' || role === 'super_admin'
+        ? '/admin'
+        : '/'
+    );
+  }
+
+  checkSession();
+
+  return () => {
+    active = false;
+  };
+}, [router, supabase]);
 
   const [language, setLanguage] = useState<'en' | 'te'>('en');
   const [isSignup, setIsSignup] = useState(false);
