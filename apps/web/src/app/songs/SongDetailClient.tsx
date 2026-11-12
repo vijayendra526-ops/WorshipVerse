@@ -6,14 +6,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
-  getAllOfflineSongs,
+  getOfflineSong,
+  saveSong,
   type OfflineSong,
 } from '@/lib/offline/song-storage';
 import FavouriteButton from './FavouriteButton';
-
-type SongWithTransliteration = OfflineSong & {
-  lyrics_transliteration?: string | null;
-};
 
 type Props = {
   id: string;
@@ -22,12 +19,11 @@ type Props = {
 export default function SongDetailClient({ id }: Props) {
   const router = useRouter();
 
-  const [song, setSong] = useState<SongWithTransliteration | null>(null);
+  const [song, setSong] = useState<OfflineSong | null>(null);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState('');
 
-  // Lyrics language switcher
   const [lyricsView, setLyricsView] = useState<'te' | 'en'>('te');
 
   useEffect(() => {
@@ -37,36 +33,53 @@ export default function SongDetailClient({ id }: Props) {
       setLoading(true);
       setError('');
 
-      const supabase = createClient();
+      let cachedSong: OfflineSong | null = null;
 
+      // STEP 1: Check local storage first.
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        cachedSong = await getOfflineSong(id);
 
-        if (!session) {
-          router.replace('/login');
-          return;
+        if (active && cachedSong) {
+          setSong(cachedSong);
+          setOffline(!navigator.onLine);
+          setLoading(false);
         }
+      } catch (storageError) {
+        console.warn('Unable to read offline song:', storageError);
+      }
 
-        if (!navigator.onLine) {
-          const savedSongs = await getAllOfflineSongs();
+      if (!active) return;
 
-          const savedSong = savedSongs.find(
-            (item) => item.id === id
-          );
+      // STEP 2: If offline, use the downloaded song.
+      if (!navigator.onLine) {
+        if (active) {
+          setOffline(true);
 
-          if (!savedSong) {
-            throw new Error(
+          if (!cachedSong) {
+            setError(
               'This song has not been downloaded for offline use.'
             );
           }
 
-          if (active) {
-            setSong(savedSong as SongWithTransliteration);
-            setOffline(true);
-          }
+          setLoading(false);
+        }
 
+        return;
+      }
+
+      // STEP 3: Refresh from Supabase when online.
+      try {
+        const supabase = createClient();
+
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) throw sessionError;
+
+        if (!session) {
+          router.replace('/login');
           return;
         }
 
@@ -80,43 +93,71 @@ export default function SongDetailClient({ id }: Props) {
 
         if (fetchError) throw fetchError;
 
+        if (!active) return;
+
+        const latestSong = data as OfflineSong;
+
+        // STEP 4: Save the latest song locally.
+        try {
+          await saveSong(latestSong);
+        } catch (storageError) {
+          console.warn(
+            'Unable to save song for offline use:',
+            storageError
+          );
+        }
+
         if (active) {
-          setSong(data as SongWithTransliteration);
+          setSong(latestSong);
           setOffline(false);
+          setError('');
         }
       } catch (err) {
-        // Try loading the downloaded song if online loading fails.
-        try {
-          const savedSongs = await getAllOfflineSongs();
+        if (!active) return;
 
-          const savedSong = savedSongs.find(
-            (item) => item.id === id
+        console.warn('Unable to refresh song:', err);
+
+        // STEP 5: Fall back to the previously downloaded song.
+        if (cachedSong) {
+          setSong(cachedSong);
+          setOffline(true);
+          setError('');
+        } else {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Unable to load this song.'
           );
-
-          if (savedSong && active) {
-            setSong(savedSong as SongWithTransliteration);
-            setOffline(true);
-          } else if (active) {
-            setError(
-              err instanceof Error
-                ? err.message
-                : 'Unable to load this song.'
-            );
-          }
-        } catch {
-          if (active) {
-            setError('Unable to load this song.');
-          }
         }
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
     void loadSong();
 
+    const handleOnline = () => {
+      if (active) {
+        void loadSong();
+      }
+    };
+
+    const handleOffline = () => {
+      if (active) {
+        setOffline(true);
+        void loadSong();
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     return () => {
       active = false;
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, [id, router]);
 
@@ -171,9 +212,7 @@ export default function SongDetailClient({ id }: Props) {
             className="flex items-center gap-2 text-sm font-medium text-[#32165C] transition hover:text-[#9B7A3C]"
           >
             <span className="text-xl">←</span>
-            {isTelugu
-              ? 'పాటలకు తిరిగి వెళ్ళండి'
-              : 'Back to Songs'}
+            {isTelugu ? 'తిరిగి వెళ్లండి' : 'Back to Songs'}
           </Link>
 
           <Link

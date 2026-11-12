@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 
 import { supabase } from '../lib/supabase';
+import ManageSongsScreen from './ManageSongsScreen';
 
 const COLORS = {
   purple: '#32165C',
@@ -26,11 +27,19 @@ const COLORS = {
   border: '#EEE9F2',
 };
 
+type RecentSong = {
+  id: string;
+  title: string;
+  language: string;
+  created_at: string;
+};
+
 export default function AdminScreen() {
   const [email, setEmail] = useState('');
   const [songCount, setSongCount] = useState<number | null>(null);
   const [teluguCount, setTeluguCount] = useState(0);
   const [englishCount, setEnglishCount] = useState(0);
+  const [recentSongs, setRecentSongs] = useState<RecentSong[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Add Song form state
@@ -42,6 +51,9 @@ export default function AdminScreen() {
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Manage Songs navigation state
+  const [showManageSongs, setShowManageSongs] = useState(false);
+
   useEffect(() => {
     loadDashboard();
   }, []);
@@ -49,30 +61,66 @@ export default function AdminScreen() {
   async function loadDashboard() {
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    setEmail(user?.email ?? '');
+      if (userError || !user) {
+        Alert.alert('Authentication Error', 'Please sign in again.');
+        setLoading(false);
+        return;
+      }
 
-    const [total, telugu, english] = await Promise.all([
-      supabase.from('songs').select('*', { count: 'exact', head: true }),
-      supabase.from('songs').select('*', { count: 'exact', head: true }).eq('language', 'te'),
-      supabase.from('songs').select('*', { count: 'exact', head: true }).eq('language', 'en'),
-    ]);
+      setEmail(user.email ?? '');
 
-    if (total.error || telugu.error || english.error) {
+      const [total, telugu, english, recent] = await Promise.all([
+        supabase.from('songs').select('*', {
+          count: 'exact',
+          head: true,
+        }),
+
+        supabase
+          .from('songs')
+          .select('*', { count: 'exact', head: true })
+          .eq('language', 'te'),
+
+        supabase
+          .from('songs')
+          .select('*', { count: 'exact', head: true })
+          .eq('language', 'en'),
+
+        supabase
+          .from('songs')
+          .select('id, title, language, created_at')
+          .order('created_at', { ascending: false })
+          .limit(5),
+      ]);
+
+      if (total.error || telugu.error || english.error || recent.error) {
+        Alert.alert(
+          'Dashboard Error',
+          total.error?.message ||
+            telugu.error?.message ||
+            english.error?.message ||
+            recent.error?.message ||
+            'Unable to load dashboard data.'
+        );
+      } else {
+        setSongCount(total.count ?? 0);
+        setTeluguCount(telugu.count ?? 0);
+        setEnglishCount(english.count ?? 0);
+        setRecentSongs(recent.data ?? []);
+      }
+    } catch (error) {
       Alert.alert(
         'Dashboard Error',
-        total.error?.message || telugu.error?.message || english.error?.message
+        error instanceof Error ? error.message : 'Unable to load dashboard.'
       );
-    } else {
-      setSongCount(total.count ?? 0);
-      setTeluguCount(telugu.count ?? 0);
-      setEnglishCount(english.count ?? 0);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function handleAddSong() {
@@ -184,10 +232,15 @@ export default function AdminScreen() {
     }
   }
 
-  function comingSoon(feature: string) {
-    Alert.alert(
-      feature,
-      'This feature will be implemented in the next step.'
+  // Open Manage Songs instead of showing the placeholder alert.
+  if (showManageSongs) {
+    return (
+      <ManageSongsScreen
+        onBack={() => {
+          setShowManageSongs(false);
+          void loadDashboard();
+        }}
+      />
     );
   }
 
@@ -218,14 +271,16 @@ export default function AdminScreen() {
           <Text style={styles.email}>{email}</Text>
         </View>
 
-        {/* Library statistics */}
+        {/* Library Statistics */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Library Overview</Text>
-          <TouchableOpacity onPress={loadDashboard}>
+
+          <TouchableOpacity onPress={loadDashboard} disabled={loading}>
             <Text style={styles.refresh}>Refresh</Text>
           </TouchableOpacity>
         </View>
 
+        {/* Total Songs */}
         <View style={styles.totalCard}>
           <View>
             <Text style={styles.totalLabel}>
@@ -253,6 +308,7 @@ export default function AdminScreen() {
           </View>
         </View>
 
+        {/* Telugu and English Statistics */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statSymbol}>తెలుగు</Text>
@@ -271,7 +327,49 @@ export default function AdminScreen() {
           </View>
         </View>
 
-        {/* Song management */}
+        {/* Recently Published */}
+        <Text style={styles.sectionTitle}>
+          Recently Published
+        </Text>
+
+        <View style={styles.recentList}>
+          {loading ? (
+            <ActivityIndicator color={COLORS.purple} />
+          ) : recentSongs.length > 0 ? (
+            recentSongs.map((song) => (
+              <View key={song.id} style={styles.recentSongCard}>
+                <View style={styles.recentSongIcon}>
+                  <Text style={styles.recentSongIconText}>♫</Text>
+                </View>
+
+                <View style={styles.recentSongContent}>
+                  <Text
+                    style={styles.recentSongTitle}
+                    numberOfLines={1}
+                  >
+                    {song.title}
+                  </Text>
+
+                  <Text style={styles.recentSongLanguage}>
+                    {song.language === 'te' ? 'Telugu' : 'English'}
+                  </Text>
+                </View>
+
+                <Text style={styles.recentSongDate}>
+                  {song.created_at
+                    ? new Date(song.created_at).toLocaleDateString()
+                    : ''}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyRecent}>
+              No songs published yet.
+            </Text>
+          )}
+        </View>
+
+        {/* Song Management */}
         <Text style={styles.sectionTitle}>Song Management</Text>
 
         <TouchableOpacity
@@ -294,7 +392,7 @@ export default function AdminScreen() {
 
         <TouchableOpacity
           style={styles.actionCard}
-          onPress={() => comingSoon('Manage Songs')}
+          onPress={() => setShowManageSongs(true)}
         >
           <View style={styles.actionIcon}>
             <Text style={styles.actionIconText}>♫</Text>
@@ -359,6 +457,7 @@ export default function AdminScreen() {
               </View>
 
               <Text style={styles.inputLabel}>Song Title *</Text>
+
               <TextInput
                 style={styles.input}
                 placeholder="Enter song title"
@@ -368,6 +467,7 @@ export default function AdminScreen() {
               />
 
               <Text style={styles.inputLabel}>Song Language *</Text>
+
               <View style={styles.languageRow}>
                 <TouchableOpacity
                   style={[
@@ -405,7 +505,9 @@ export default function AdminScreen() {
               </View>
 
               <Text style={styles.inputLabel}>
-                {language === 'te' ? 'Telugu Song Lyrics *' : 'Song Lyrics *'}
+                {language === 'te'
+                  ? 'Telugu Song Lyrics *'
+                  : 'Song Lyrics *'}
               </Text>
 
               <TextInput
@@ -498,6 +600,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.ivory,
   },
+
   header: {
     backgroundColor: COLORS.deepPurple,
     paddingHorizontal: 24,
@@ -507,18 +610,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   brand: {
     color: COLORS.white,
     fontSize: 21,
     fontWeight: '800',
     letterSpacing: 2,
   },
+
   church: {
     color: COLORS.gold,
     fontSize: 10,
     letterSpacing: 2,
     marginTop: 5,
   },
+
   adminBadge: {
     borderWidth: 1,
     borderColor: COLORS.gold,
@@ -526,39 +632,46 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
+
   adminBadgeText: {
     color: COLORS.gold,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1,
   },
+
   welcome: {
     paddingHorizontal: 24,
     paddingTop: 30,
     paddingBottom: 24,
   },
+
   welcomeLabel: {
     color: '#A17D43',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 2,
   },
+
   heading: {
     color: COLORS.purple,
     fontSize: 32,
     fontWeight: '800',
     marginTop: 7,
   },
+
   subtitle: {
     color: COLORS.muted,
     fontSize: 14,
     marginTop: 5,
   },
+
   email: {
     color: COLORS.purple,
     fontSize: 12,
     marginTop: 12,
   },
+
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -566,6 +679,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     marginBottom: 14,
   },
+
   sectionTitle: {
     color: COLORS.purple,
     fontSize: 17,
@@ -574,11 +688,13 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 14,
   },
+
   refresh: {
     color: '#9A7439',
     fontSize: 13,
     fontWeight: '700',
   },
+
   totalCard: {
     marginHorizontal: 24,
     backgroundColor: COLORS.purple,
@@ -588,23 +704,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+
   totalLabel: {
     color: '#E8D8B5',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
   },
+
   totalCount: {
     color: COLORS.white,
     fontSize: 42,
     fontWeight: '800',
     marginTop: 7,
   },
+
   totalCaption: {
     color: '#D8CBE5',
     fontSize: 12,
     marginTop: 3,
   },
+
   musicIcon: {
     width: 58,
     height: 58,
@@ -613,16 +733,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   musicIconText: {
     color: COLORS.gold,
     fontSize: 34,
   },
+
   statsRow: {
     flexDirection: 'row',
     marginHorizontal: 24,
     marginTop: 14,
     gap: 12,
   },
+
   statCard: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -631,22 +754,87 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+
   statSymbol: {
     color: '#A17D43',
     fontSize: 13,
     fontWeight: '800',
   },
+
   statCount: {
     color: COLORS.purple,
     fontSize: 27,
     fontWeight: '800',
     marginTop: 10,
   },
+
   statLabel: {
     color: COLORS.muted,
     fontSize: 11,
     marginTop: 4,
   },
+
+  recentList: {
+    marginHorizontal: 24,
+    gap: 10,
+  },
+
+  recentSongCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  recentSongIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#F1EAF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  recentSongIconText: {
+    color: COLORS.purple,
+    fontSize: 23,
+  },
+
+  recentSongContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+
+  recentSongTitle: {
+    color: COLORS.purple,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  recentSongLanguage: {
+    color: COLORS.muted,
+    fontSize: 11,
+    marginTop: 4,
+  },
+
+  recentSongDate: {
+    color: COLORS.muted,
+    fontSize: 10,
+    marginLeft: 8,
+  },
+
+  emptyRecent: {
+    color: COLORS.muted,
+    fontSize: 13,
+    textAlign: 'center',
+    padding: 20,
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+  },
+
   actionCard: {
     marginHorizontal: 24,
     marginBottom: 12,
@@ -658,6 +846,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+
   actionIcon: {
     width: 45,
     height: 45,
@@ -666,29 +855,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   actionIconText: {
     color: COLORS.purple,
     fontSize: 25,
     fontWeight: '700',
   },
+
   actionContent: {
     flex: 1,
     marginLeft: 13,
   },
+
   actionTitle: {
     color: COLORS.purple,
     fontSize: 14,
     fontWeight: '800',
   },
+
   actionDescription: {
     color: COLORS.muted,
     fontSize: 11,
     marginTop: 4,
   },
+
   arrow: {
     color: '#A17D43',
     fontSize: 27,
   },
+
   footerCard: {
     marginHorizontal: 24,
     marginTop: 24,
@@ -697,17 +892,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#F0EAF5',
     alignItems: 'center',
   },
+
   footerTitle: {
     color: COLORS.purple,
     fontSize: 14,
     fontWeight: '800',
   },
+
   footerText: {
     color: COLORS.muted,
     fontSize: 11,
     textAlign: 'center',
     marginTop: 7,
   },
+
   signOut: {
     marginHorizontal: 24,
     marginTop: 20,
@@ -717,11 +915,13 @@ const styles = StyleSheet.create({
     padding: 15,
     alignItems: 'center',
   },
+
   signOutText: {
     color: COLORS.purple,
     fontSize: 14,
     fontWeight: '700',
   },
+
   version: {
     color: '#A49BAA',
     fontSize: 9,
@@ -737,6 +937,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20, 10, 35, 0.65)',
     justifyContent: 'flex-end',
   },
+
   modalCard: {
     backgroundColor: COLORS.ivory,
     borderTopLeftRadius: 26,
@@ -746,24 +947,28 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
     maxHeight: '92%',
   },
+
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 25,
   },
+
   modalEyebrow: {
     color: '#A17D43',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 2,
   },
+
   modalTitle: {
     color: COLORS.purple,
     fontSize: 25,
     fontWeight: '800',
     marginTop: 6,
   },
+
   closeButton: {
     width: 36,
     height: 36,
@@ -772,11 +977,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   closeText: {
     color: COLORS.purple,
     fontSize: 17,
     fontWeight: '700',
   },
+
   inputLabel: {
     color: COLORS.purple,
     fontSize: 13,
@@ -784,6 +991,7 @@ const styles = StyleSheet.create({
     marginBottom: 9,
     marginTop: 17,
   },
+
   input: {
     backgroundColor: COLORS.white,
     borderWidth: 1,
@@ -794,20 +1002,24 @@ const styles = StyleSheet.create({
     color: COLORS.purple,
     fontSize: 14,
   },
+
   lyricsInput: {
     minHeight: 150,
     textAlignVertical: 'top',
   },
+
   helperText: {
     color: COLORS.muted,
     fontSize: 12,
     lineHeight: 18,
     marginBottom: 10,
   },
+
   languageRow: {
     flexDirection: 'row',
     gap: 12,
   },
+
   languageButton: {
     flex: 1,
     paddingVertical: 14,
@@ -817,18 +1029,22 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
   },
+
   languageSelected: {
     backgroundColor: COLORS.purple,
     borderColor: COLORS.purple,
   },
+
   languageText: {
     color: COLORS.purple,
     fontSize: 14,
     fontWeight: '700',
   },
+
   languageTextSelected: {
     color: COLORS.white,
   },
+
   publishButton: {
     backgroundColor: COLORS.purple,
     borderRadius: 13,
@@ -836,19 +1052,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 28,
   },
+
   disabledButton: {
     opacity: 0.65,
   },
+
   publishButtonText: {
     color: COLORS.white,
     fontSize: 15,
     fontWeight: '800',
   },
+
   cancelButton: {
     padding: 15,
     alignItems: 'center',
     marginTop: 5,
   },
+
   cancelButtonText: {
     color: COLORS.muted,
     fontSize: 14,

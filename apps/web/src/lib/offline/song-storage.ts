@@ -16,7 +16,10 @@ const DB_VERSION = 1;
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined' || !('indexedDB' in window)) {
+    if (
+      typeof window === 'undefined' ||
+      !('indexedDB' in window)
+    ) {
       reject(new Error('Offline storage is not supported.'));
       return;
     }
@@ -42,6 +45,40 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
+// Save or update songs without deleting existing downloads.
+export async function saveSongs(
+  songs: OfflineSong[],
+): Promise<void> {
+  if (songs.length === 0) return;
+
+  const db = await openDatabase();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+
+      for (const song of songs) {
+        store.put(song);
+      }
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+// Save one song without deleting other songs.
+export async function saveSong(
+  song: OfflineSong,
+): Promise<void> {
+  await saveSongs([song]);
+}
+
+// Download and replace the complete offline library.
 export async function saveAllSongs(
   songs: OfflineSong[],
 ): Promise<void> {
@@ -67,6 +104,7 @@ export async function saveAllSongs(
   }
 }
 
+// Get all downloaded songs.
 export async function getAllOfflineSongs(): Promise<OfflineSong[]> {
   const db = await openDatabase();
 
@@ -87,18 +125,42 @@ export async function getAllOfflineSongs(): Promise<OfflineSong[]> {
   }
 }
 
+// Get one downloaded song by ID.
+export async function getOfflineSong(
+  id: string,
+): Promise<OfflineSong | null> {
+  const db = await openDatabase();
+
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = db
+        .transaction(STORE_NAME, 'readonly')
+        .objectStore(STORE_NAME)
+        .get(id);
+
+      request.onsuccess = () =>
+        resolve((request.result as OfflineSong) ?? null);
+
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+// Remove all downloaded songs.
 export async function removeAllOfflineSongs(): Promise<void> {
   const db = await openDatabase();
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const request = db
-        .transaction(STORE_NAME, 'readwrite')
-        .objectStore(STORE_NAME)
-        .clear();
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      transaction.objectStore(STORE_NAME).clear();
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
     });
   } finally {
     db.close();

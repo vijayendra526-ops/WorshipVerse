@@ -3,13 +3,17 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-type RecognitionResult = {
+type RecognitionAlternative = {
   transcript: string;
+};
+
+type RecognitionResult = ArrayLike<RecognitionAlternative> & {
+  isFinal: boolean;
 };
 
 type RecognitionEvent = {
   resultIndex: number;
-  results: ArrayLike<ArrayLike<RecognitionResult>>;
+  results: ArrayLike<RecognitionResult>;
 };
 
 type RecognitionErrorEvent = {
@@ -35,7 +39,7 @@ type SpeechWindow = Window & {
 
 type Props = {
   language: 'en' | 'te';
-  onTranscript: (transcript: string) => void;
+  onTranscript: (transcript: string, isFinal: boolean) => void;
 };
 
 export default function VoiceSearch({
@@ -49,23 +53,27 @@ export default function VoiceSearch({
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop();
+      recognitionRef.current = null;
     };
   }, []);
 
   function startVoiceSearch() {
+    if (listening) return;
+
     if (!window.isSecureContext) {
-      setMessage('Voice search requires a secure HTTPS connection.');
+      setMessage('Voice search requires HTTPS or localhost.');
       return;
     }
 
     const speechWindow = window as SpeechWindow;
+
     const SpeechRecognition =
       speechWindow.SpeechRecognition ||
       speechWindow.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       setMessage(
-        'Voice search is unavailable in this browser. Try a supported browser.'
+        'Voice search is not supported in this browser. Try Google Chrome.'
       );
       return;
     }
@@ -75,23 +83,41 @@ export default function VoiceSearch({
 
       recognition.lang = language === 'te' ? 'te-IN' : 'en-IN';
       recognition.interimResults = true;
-      recognition.continuous = false;
+      recognition.continuous = true;
 
       recognition.onstart = () => {
         setListening(true);
-        setMessage('Listening... Speak now.');
+        setMessage(
+          language === 'te'
+            ? 'వింటున్నాను... ఇప్పుడు మాట్లాడండి.'
+            : 'Listening... Speak now.'
+        );
       };
 
       recognition.onresult = (event) => {
         let transcript = '';
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
           transcript += event.results[i][0]?.transcript || '';
         }
 
-        if (transcript.trim()) {
-          onTranscript(transcript.trim());
-          setMessage('Voice recognized! Press Search to find songs.');
+        const cleanedTranscript = transcript.trim();
+
+        if (cleanedTranscript) {
+          const lastResult = event.results[event.results.length - 1];
+          const isFinal = Boolean(lastResult?.isFinal);
+
+          onTranscript(cleanedTranscript, isFinal);
+
+          setMessage(
+            isFinal
+              ? language === 'te'
+                ? 'పాట కోసం వెతుకుతున్నాను...'
+                : 'Searching for songs...'
+              : language === 'te'
+                ? 'మీ మాటలను గుర్తిస్తున్నాను...'
+                : 'Recognizing your words...'
+          );
         }
       };
 
@@ -100,9 +126,9 @@ export default function VoiceSearch({
 
         const messages: Record<string, string> = {
           'not-allowed':
-            'Microphone access is blocked. Check your browser microphone permissions.',
+            'Microphone access is blocked. Allow microphone permission in your browser.',
           'service-not-allowed':
-            'Your browser or device has blocked its speech recognition service. Try Safari again or use typed search.',
+            'Speech recognition is blocked by your browser or device.',
           'no-speech':
             'No speech detected. Please try speaking again.',
           network:
@@ -110,31 +136,33 @@ export default function VoiceSearch({
           'audio-capture':
             'No microphone detected. Check your microphone settings.',
           'language-not-supported':
-            'This language is not supported by speech recognition on this device.',
-          aborted:
-            'Voice search was stopped.',
+            'This language is not supported on this device.',
+          aborted: 'Voice search was stopped.',
         };
 
         setMessage(
           messages[event.error] ||
-          `Voice search failed (${event.error}). Please use typed search.`
+            `Voice search failed (${event.error}). Please try again.`
         );
       };
 
       recognition.onend = () => {
         setListening(false);
+        recognitionRef.current = null;
       };
 
       recognitionRef.current = recognition;
       recognition.start();
     } catch {
       setListening(false);
+      recognitionRef.current = null;
       setMessage('Unable to start voice search. Please try again.');
     }
   }
 
   function stopVoiceSearch() {
     recognitionRef.current?.stop();
+    recognitionRef.current = null;
     setListening(false);
   }
 

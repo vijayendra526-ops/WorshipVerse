@@ -1,6 +1,5 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
-
 import {
   View,
   Text,
@@ -8,18 +7,24 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert,
-  ActivityIndicator,
-  Linking,
   Keyboard,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-
-import { supabase } from '../lib/supabase';
 
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+
+import Sanscript from '@indic-transliteration/sanscript';
+
+import {
+  getOfflineSongs,
+  syncOfflineSongs,
+} from '../lib/offlineSongs';
+
+import SongDetailsScreen from './SongDetailsScreen';
 
 type Language = 'en' | 'te';
 
@@ -29,6 +34,7 @@ type Song = {
   artist: string | null;
   language: string;
   lyrics: string;
+  lyrics_transliteration?: string | null;
   youtube_url: string | null;
 };
 
@@ -37,6 +43,30 @@ type SongsScreenProps = {
   initialSearch?: string;
   onBack: () => void;
 };
+
+// Convert Romanized Telugu into Telugu script.
+function convertRomanizedTelugu(query: string): string {
+  const input = query.trim().toLowerCase();
+
+  if (!input || /[\u0C00-\u0C7F]/.test(input)) {
+    return input;
+  }
+
+  return Sanscript.t(
+    input,
+    'itrans_dravidian',
+    'telugu'
+  );
+}
+
+// Normalize Telugu text so short and long vowel differences
+// do not prevent a search match.
+function normalizeTelugu(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[\u0C3E-\u0C4C\u0C55-\u0C56]/g, '')
+    .replace(/\s+/g, '');
+}
 
 export default function SongsScreen({
   language,
@@ -50,231 +80,235 @@ export default function SongsScreen({
   const [search, setSearch] = useState(initialSearch);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [expandedSongId, setExpandedSongId] =
-    useState<string | null>(null);
+  const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+  const [isListening, setIsListening] = useState(false);
 
-  const [listening, setListening] = useState(false);
-  const [voiceMessage, setVoiceMessage] = useState('');
+  // Prevent an older language request from overwriting newer results.
+  const [requestVersion, setRequestVersion] = useState(0);
 
-  const isTe = activeLanguage === 'te';
-
-  // VOICE RECOGNITION EVENTS
-
-  useSpeechRecognitionEvent('start', () => {
-    setListening(true);
-    setVoiceMessage(isTe ? 'వింటున్నాను...' : 'Listening...');
-  });
-
+  // VOICE SEARCH RESULT
   useSpeechRecognitionEvent('result', (event) => {
-    const transcript =
-      event.results[0]?.transcript?.trim() ?? '';
+    const transcript = event.results?.[0]?.transcript;
 
     if (transcript) {
       setSearch(transcript);
-      setVoiceMessage(
-        isTe ? 'గుర్తించబడింది!' : 'Voice recognized!'
-      );
     }
   });
 
-  useSpeechRecognitionEvent('error', (event) => {
-    setListening(false);
-
-    const message =
-      event.message || event.error || 'Unknown error';
-
-    setVoiceMessage(
-      isTe
-        ? `వాయిస్ శోధన లోపం: ${message}`
-        : `Voice search error: ${message}`
-    );
-  });
-
+  // VOICE SEARCH COMPLETED
   useSpeechRecognitionEvent('end', () => {
-    setListening(false);
+    setIsListening(false);
   });
 
-  // LOAD SONGS FROM SUPABASE
+  // VOICE SEARCH ERROR
+  useSpeechRecognitionEvent('error', (event) => {
+    setIsListening(false);
+    console.log('Speech recognition error:', event);
+  });
 
+  // LOAD CACHED SONGS FIRST, THEN SYNC WITH SUPABASE
   const loadSongs = useCallback(async () => {
-    setLoading(true);
     setError('');
 
+    let cachedSongs: Song[] = [];
+
+    // STEP 1: READ LOCAL SQLITE STORAGE
     try {
-      const { data, error: queryError } = await supabase
-        .from('songs')
-        .select(
-          'id, title, artist, language, lyrics, youtube_url'
-        )
-        .eq('language', activeLanguage)
-        .order('created_at', { ascending: false });
+      cachedSongs = await getOfflineSongs(activeLanguage);
 
-      if (queryError) {
-        throw queryError;
+      if (cachedSongs.length > 0) {
+        setSongs(cachedSongs);
+        setLoading(false);
+      } else {
+        setSongs([]);
+        setLoading(true);
       }
+    } catch (cacheError) {
+      console.error('Offline storage error:', cacheError);
 
-      setSongs((data ?? []) as Song[]);
-    } catch (err: any) {
-      console.error('Songs loading error:', err);
-      setError(err?.message || 'Unable to load songs.');
       setSongs([]);
+      setLoading(false);
+      setError('Unable to access offline song storage.');
+      return;
+    }
+
+    // STEP 2: SYNC WITH SUPABASE IN THE BACKGROUND
+    try {
+      const updatedSongs = await syncOfflineSongs();
+
+      setSongs(
+        updatedSongs.filter(
+          (song) => song.language === activeLanguage
+        )
+      );
+
+      setError('');
+    } catch (syncError) {
+      console.error('Supabase song sync error:', syncError);
+
+      // Keep cached songs if internet is unavailable.
+      if (cachedSongs.length === 0) {
+        setSongs([]);
+        setError(
+          'Unable to load songs. Please check your internet connection.'
+        );
+      }
     } finally {
       setLoading(false);
     }
   }, [activeLanguage]);
 
+  // LOAD SONGS WHEN SCREEN OPENS OR LANGUAGE CHANGES
   useEffect(() => {
     loadSongs();
-  }, [loadSongs]);
-
-  // FILTER SONGS
-
-  const filteredSongs = songs.filter((song) => {
-    const query = search.trim().toLocaleLowerCase();
-
-    if (!query) return true;
-
-    return (
-      song.title.toLocaleLowerCase().includes(query) ||
-      (song.artist ?? '').toLocaleLowerCase().includes(query)
-    );
-  });
-
-  // CHANGE LANGUAGE
-
-  const changeLanguage = (newLanguage: Language) => {
-    if (listening) {
-      ExpoSpeechRecognitionModule.stop();
-    }
-
-    setActiveLanguage(newLanguage);
-    setSearch('');
-    setExpandedSongId(null);
-    setVoiceMessage('');
-    Keyboard.dismiss();
-  };
+  }, [loadSongs, requestVersion]);
 
   // START VOICE SEARCH
-
   const startVoiceSearch = async () => {
     try {
-      setVoiceMessage('');
-
-      const permission =
-        await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-
-      if (!permission.granted) {
-        setVoiceMessage(
-          isTe
-            ? 'మైక్రోఫోన్ అనుమతి అవసరం.'
-            : 'Microphone permission is required.'
-        );
-        return;
-      }
-
       Keyboard.dismiss();
 
-      ExpoSpeechRecognitionModule.start({
+      await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+
+      setIsListening(true);
+
+      await ExpoSpeechRecognitionModule.start({
         lang: activeLanguage === 'te' ? 'te-IN' : 'en-IN',
-        interimResults: true,
+        interimResults: false,
         continuous: false,
       });
     } catch (err) {
       console.error('Voice search error:', err);
-      setListening(false);
-      setVoiceMessage(
-        isTe
-          ? 'వాయిస్ శోధన ప్రారంభించలేకపోయాము.'
-          : 'Unable to start voice search.'
+      setIsListening(false);
+
+      Alert.alert(
+        'Voice Search',
+        'Unable to start voice search. Please check microphone permissions.'
       );
     }
   };
 
   // STOP VOICE SEARCH
-
-  const stopVoiceSearch = () => {
-    ExpoSpeechRecognitionModule.stop();
-  };
-
-  // EXPAND / COLLAPSE LYRICS
-
-  const toggleLyrics = (id: string) => {
-    setExpandedSongId((current) =>
-      current === id ? null : id
-    );
-  };
-
-  // OPEN YOUTUBE
-
-  const openYouTube = async (url: string) => {
+  const stopVoiceSearch = async () => {
     try {
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert(
-        'Unable to open YouTube',
-        'Please check the video link.'
+      await ExpoSpeechRecognitionModule.stop();
+    } catch (err) {
+      console.error('Unable to stop voice search:', err);
+    }
+
+    setIsListening(false);
+  };
+
+  // FILTER SONGS
+  const filteredSongs = songs.filter((song) => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return true;
+
+    const title = song.title?.toLowerCase() ?? '';
+    const artist = song.artist?.toLowerCase() ?? '';
+
+    // Direct English or Telugu search.
+    if (
+      title.includes(query) ||
+      artist.includes(query)
+    ) {
+      return true;
+    }
+
+    // Romanized Telugu search.
+    if (
+      activeLanguage === 'te' &&
+      /^[a-z\s]+$/i.test(query)
+    ) {
+      const convertedQuery = convertRomanizedTelugu(query);
+      const normalizedQuery = normalizeTelugu(convertedQuery);
+
+      const normalizedTitle = normalizeTelugu(title);
+      const normalizedArtist = normalizeTelugu(artist);
+
+      return (
+        normalizedTitle.includes(normalizedQuery) ||
+        normalizedArtist.includes(normalizedQuery)
       );
     }
-  };
 
-  // SCREEN UI
+    return false;
+  });
+
+  // OPEN SONG DETAILS
+  if (selectedSong) {
+    return (
+      <SongDetailsScreen
+        song={selectedSong}
+        onBack={() => setSelectedSong(null)}
+      />
+    );
+  }
 
   return (
-    <View style={styles.screen}>
-      {/* TOP HEADER */}
-
-      <View style={styles.libraryHeader}>
+    <View style={styles.container}>
+      {/* HEADER */}
+      <View style={styles.header}>
         <TouchableOpacity
-          onPress={onBack}
           style={styles.backButton}
+          onPress={onBack}
         >
           <Text style={styles.backText}>
-            {isTe ? '← వెనుకకు' : '← Back'}
+            {activeLanguage === 'te' ? '← వెనుకకు' : '← Back'}
           </Text>
         </TouchableOpacity>
 
-        <Text style={styles.libraryBrand}>
-          WorshipVerse
+        <Text style={styles.logo}>WorshipVerse</Text>
+
+        <Text style={styles.headerSubtitle}>
+          SHARON A.G. CHURCH
         </Text>
       </View>
 
       <ScrollView
-        showsVerticalScrollIndicator={false}
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.libraryContent}
+        showsVerticalScrollIndicator={false}
       >
-        {/* LIBRARY TITLE */}
-
-        <View style={styles.libraryIntro}>
+        {/* PAGE INTRODUCTION */}
+        <View style={styles.intro}>
           <Text style={styles.eyebrow}>
             WORSHIPVERSE LIBRARY
           </Text>
 
-          <Text style={styles.libraryTitle}>
-            {isTe ? 'తెలుగు పాటలు' : 'English Songs'}
+          <Text style={styles.heading}>
+            {activeLanguage === 'te'
+              ? 'తెలుగు పాటలు'
+              : 'Songs Library'}
           </Text>
 
-          <Text style={styles.librarySubtitle}>
-            {isTe
+          <Text style={styles.description}>
+            {activeLanguage === 'te'
               ? 'తెలుగు ఆరాధన పాటలను అన్వేషించండి'
-              : 'Explore English worship songs'}
+              : 'Discover songs of worship and praise'}
           </Text>
         </View>
 
-        {/* LANGUAGE BUTTONS */}
-
-        <View style={styles.languageTabs}>
+        {/* LANGUAGE SELECTOR */}
+        <View style={styles.languageContainer}>
           <TouchableOpacity
-            onPress={() => changeLanguage('te')}
             style={[
-              styles.languageTab,
-              isTe && styles.languageTabActive,
+              styles.languageButton,
+              activeLanguage === 'te' &&
+                styles.activeLanguageButton,
             ]}
+            onPress={() => {
+              setActiveLanguage('te');
+              setSearch('');
+            }}
           >
             <Text
               style={[
-                styles.languageTabText,
-                isTe && styles.languageTabTextActive,
+                styles.languageText,
+                activeLanguage === 'te' &&
+                  styles.activeLanguageText,
               ]}
             >
               తెలుగు
@@ -282,16 +316,21 @@ export default function SongsScreen({
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => changeLanguage('en')}
             style={[
-              styles.languageTab,
-              !isTe && styles.languageTabActive,
+              styles.languageButton,
+              activeLanguage === 'en' &&
+                styles.activeLanguageButton,
             ]}
+            onPress={() => {
+              setActiveLanguage('en');
+              setSearch('');
+            }}
           >
             <Text
               style={[
-                styles.languageTabText,
-                !isTe && styles.languageTabTextActive,
+                styles.languageText,
+                activeLanguage === 'en' &&
+                  styles.activeLanguageText,
               ]}
             >
               English
@@ -299,73 +338,59 @@ export default function SongsScreen({
           </TouchableOpacity>
         </View>
 
-        {/* SEARCH WITH VOICE SEARCH */}
-
-        <View style={styles.librarySearch}>
+        {/* SEARCH */}
+        <View style={styles.searchContainer}>
           <TextInput
+            style={styles.searchInput}
+            placeholder={
+              activeLanguage === 'te'
+                ? 'పాట పేరు లేదా గాయకుడి పేరు వెతకండి'
+                : 'Search songs or artists...'
+            }
+            placeholderTextColor="#999"
             value={search}
             onChangeText={setSearch}
-            placeholder={
-              isTe
-                ? 'పాట పేరు ద్వారా వెతకండి...'
-                : 'Search songs by title...'
-            }
-            placeholderTextColor="#93899D"
-            style={styles.librarySearchInput}
             returnKeyType="search"
           />
 
           <TouchableOpacity
-            onPress={
-              listening ? stopVoiceSearch : startVoiceSearch
-            }
             style={[
-              styles.voiceSearchButton,
-              listening && styles.voiceSearchButtonActive,
+              styles.voiceButton,
+              isListening && styles.listeningButton,
             ]}
-            activeOpacity={0.8}
+            onPress={
+              isListening ? stopVoiceSearch : startVoiceSearch
+            }
           >
-            <Text style={styles.voiceSearchButtonText}>
-              {listening ? '■' : '🎙'}
+            <Text style={styles.voiceButtonText}>
+              {isListening ? '■' : '🎙'}
             </Text>
           </TouchableOpacity>
-
-          {search.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setSearch('')}
-            >
-              <Text style={styles.clearSearch}>✕</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
-        {!!voiceMessage && (
-          <Text style={styles.voiceMessage}>
-            {voiceMessage}
+        {isListening && (
+          <Text style={styles.listeningText}>
+            {activeLanguage === 'te'
+              ? 'వింటున్నాను... మాట్లాడండి'
+              : 'Listening... Speak now'}
           </Text>
         )}
 
         {/* SONG COUNT */}
-
         {!loading && !error && (
-          <View style={styles.countRow}>
-            <Text style={styles.songCount}>
-              {filteredSongs.length} {isTe ? 'పాటలు' : 'songs'}
-            </Text>
-          </View>
+          <Text style={styles.songCount}>
+            {filteredSongs.length}{' '}
+            {activeLanguage === 'te' ? 'పాటలు' : 'Songs'}
+          </Text>
         )}
 
         {/* LOADING */}
-
         {loading && (
-          <View style={styles.stateContainer}>
-            <ActivityIndicator
-              size="large"
-              color="#32165C"
-            />
+          <View style={styles.statusContainer}>
+            <ActivityIndicator size="large" color="#32165C" />
 
-            <Text style={styles.stateText}>
-              {isTe
+            <Text style={styles.statusText}>
+              {activeLanguage === 'te'
                 ? 'పాటలు లోడ్ అవుతున్నాయి...'
                 : 'Loading songs...'}
             </Text>
@@ -373,130 +398,93 @@ export default function SongsScreen({
         )}
 
         {/* ERROR */}
-
-        {!loading && !!error && (
-          <View style={styles.stateContainer}>
-            <Text style={styles.errorText}>
-              {error}
-            </Text>
+        {!loading && error !== '' && (
+          <View style={styles.statusContainer}>
+            <Text style={styles.errorText}>{error}</Text>
 
             <TouchableOpacity
-              onPress={loadSongs}
               style={styles.retryButton}
+              onPress={() => setRequestVersion((v) => v + 1)}
             >
-              <Text style={styles.retryText}>
+              <Text style={styles.retryButtonText}>
                 Try Again
               </Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* EMPTY */}
-
+        {/* EMPTY STATE */}
         {!loading &&
           !error &&
           filteredSongs.length === 0 && (
-            <View style={styles.stateContainer}>
+            <View style={styles.statusContainer}>
               <Text style={styles.emptyIcon}>♫</Text>
 
               <Text style={styles.emptyTitle}>
-                {songs.length === 0
-                  ? isTe
-                    ? 'ఇంకా తెలుగు పాటలు లేవు'
-                    : 'No English songs yet'
-                  : isTe
+                {search.trim()
+                  ? activeLanguage === 'te'
                     ? 'పాటలు కనుగొనబడలేదు'
-                    : 'No songs found'}
+                    : 'No songs found'
+                  : activeLanguage === 'te'
+                    ? 'ఇంకా పాటలు లేవు'
+                    : 'No songs available'}
               </Text>
 
-              <Text style={styles.stateText}>
-                {songs.length === 0
-                  ? 'Please check back later.'
-                  : 'Try another search.'}
+              <Text style={styles.emptyDescription}>
+                {search.trim()
+                  ? 'Try searching with another name.'
+                  : 'Songs will appear here when they are available.'}
               </Text>
             </View>
           )}
 
-        {/* SONG CARDS */}
-
+        {/* SONG LIST */}
         {!loading &&
           !error &&
-          filteredSongs.length > 0 && (
-            <View style={styles.songList}>
-              {filteredSongs.map((song) => {
-                const expanded =
-                  expandedSongId === song.id;
+          filteredSongs.map((song) => (
+            <TouchableOpacity
+              key={song.id}
+              style={styles.songCard}
+              activeOpacity={0.8}
+              onPress={() => {
+                Keyboard.dismiss();
+                setSelectedSong(song);
+              }}
+            >
+              <View style={styles.songIcon}>
+                <Text style={styles.songIconText}>♫</Text>
+              </View>
 
-                return (
-                  <View
-                    key={song.id}
-                    style={styles.songCard}
-                  >
-                    <Text style={styles.songCardTitle}>
-                      {song.title}
-                    </Text>
+              <View style={styles.songInfo}>
+                <Text
+                  style={styles.songTitle}
+                  numberOfLines={2}
+                >
+                  {song.title}
+                </Text>
 
-                    {!!song.artist && (
-                      <Text style={styles.songArtist}>
-                        {song.artist}
-                      </Text>
-                    )}
+                <Text style={styles.artist}>
+                  {song.artist || 'WorshipVerse'}
+                </Text>
 
-                    <TouchableOpacity
-                      style={styles.lyricsToggle}
-                      onPress={() =>
-                        toggleLyrics(song.id)
-                      }
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.lyricsArrow}>
-                        {expanded ? '▼' : '▶'}
-                      </Text>
+                <Text style={styles.songLanguage}>
+                  {song.language === 'te' ? 'తెలుగు' : 'English'}
+                </Text>
+              </View>
 
-                      <Text style={styles.lyricsToggleText}>
-                        {isTe
-                          ? expanded
-                            ? 'సాహిత్యాన్ని దాచండి'
-                            : 'సాహిత్యం చూడండి'
-                          : expanded
-                            ? 'Hide Lyrics'
-                            : 'Show Lyrics'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    {expanded && (
-                      <View style={styles.lyricsBox}>
-                        <Text style={styles.lyricsText}>
-                          {song.lyrics}
-                        </Text>
-                      </View>
-                    )}
-
-                    {!!song.youtube_url && (
-                      <TouchableOpacity
-                        style={styles.youtubeButton}
-                        onPress={() =>
-                          openYouTube(song.youtube_url!)
-                        }
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.youtubeButtonText}>
-                          ▶ Watch on YouTube
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          )}
+              <View style={styles.viewButton}>
+                <Text style={styles.viewButtonText}>
+                  {activeLanguage === 'te'
+                    ? 'చూడండి'
+                    : 'View Song'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
 
         {/* FOOTER */}
-
-        <View style={styles.libraryFooter}>
-          <Text style={styles.footerBrand}>
-            WorshipVerse
-          </Text>
+        <View style={styles.footer}>
+          <Text style={styles.footerLogo}>WorshipVerse</Text>
 
           <Text style={styles.footerTagline}>
             Every Song, A Prayer. Every Verse, A Praise.
@@ -512,322 +500,301 @@ export default function SongsScreen({
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  container: {
     flex: 1,
     backgroundColor: '#FAF8F4',
   },
 
-  // LIBRARY HEADER
-
-  libraryHeader: {
-    backgroundColor: '#32165C',
-    paddingHorizontal: 18,
-    paddingVertical: 15,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  header: {
+    backgroundColor: '#24103F',
+    paddingTop: 48,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     alignItems: 'center',
   },
 
   backButton: {
-    paddingVertical: 5,
+    alignSelf: 'flex-start',
+    marginBottom: 14,
   },
 
   backText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  libraryBrand: {
     color: '#D8B66C',
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '600',
   },
 
-  libraryContent: {
+  logo: {
+    color: '#D8B66C',
+    fontSize: 25,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+
+  headerSubtitle: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    letterSpacing: 2,
+    marginTop: 5,
+  },
+
+  scrollView: {
+    flex: 1,
+  },
+
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 28,
     paddingBottom: 30,
   },
 
-  libraryIntro: {
-    paddingHorizontal: 18,
-    paddingTop: 25,
+  intro: {
+    marginBottom: 22,
   },
 
   eyebrow: {
-    color: '#A17B38',
+    color: '#A18450',
     fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.5,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginBottom: 10,
   },
 
-  libraryTitle: {
-    color: '#32165C',
+  heading: {
+    color: '#24103F',
     fontSize: 29,
-    fontWeight: '800',
-    marginTop: 8,
+    fontWeight: 'bold',
+    marginBottom: 8,
   },
 
-  librarySubtitle: {
-    color: '#77717F',
+  description: {
+    color: '#777',
     fontSize: 14,
-    marginTop: 8,
+    lineHeight: 21,
   },
 
-  // LANGUAGE TABS
-
-  languageTabs: {
+  languageContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 18,
-    marginTop: 22,
-    gap: 10,
+    backgroundColor: '#EEE9F2',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 18,
   },
 
-  languageTab: {
-    borderWidth: 1,
-    borderColor: '#32165C',
-    borderRadius: 25,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  languageButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 9,
   },
 
-  languageTabActive: {
+  activeLanguageButton: {
     backgroundColor: '#32165C',
   },
 
-  languageTabText: {
-    color: '#32165C',
-    fontSize: 13,
-    fontWeight: '700',
+  languageText: {
+    color: '#5C5266',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
-  languageTabTextActive: {
+  activeLanguageText: {
     color: '#FFFFFF',
   },
 
-  // SEARCH
-
-  librarySearch: {
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#DCD6E2',
-    borderRadius: 13,
-    marginHorizontal: 18,
-    marginTop: 22,
-    paddingHorizontal: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderColor: '#E7E0EA',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    minHeight: 52,
   },
 
-  librarySearchInput: {
+  searchInput: {
     flex: 1,
-    color: '#32165C',
+    color: '#24103F',
     fontSize: 14,
-    paddingVertical: 13,
+    paddingVertical: 12,
   },
 
-  voiceSearchButton: {
-    backgroundColor: '#32165C',
+  voiceButton: {
+    width: 40,
+    height: 40,
     borderRadius: 10,
-    width: 42,
-    height: 42,
-    justifyContent: 'center',
+    backgroundColor: '#32165C',
     alignItems: 'center',
-    marginLeft: 5,
+    justifyContent: 'center',
+    marginLeft: 8,
   },
 
-  voiceSearchButtonActive: {
-    backgroundColor: '#B42318',
+  listeningButton: {
+    backgroundColor: '#A33B3B',
   },
 
-  voiceSearchButtonText: {
+  voiceButtonText: {
     color: '#FFFFFF',
-    fontSize: 19,
-    fontWeight: '700',
+    fontSize: 18,
   },
 
-  voiceMessage: {
-    color: '#65409A',
+  listeningText: {
+    color: '#A33B3B',
     fontSize: 12,
-    marginHorizontal: 20,
-    marginTop: 8,
-  },
-
-  clearSearch: {
-    color: '#77717F',
-    fontSize: 16,
-    padding: 8,
-  },
-
-  // SONG COUNT
-
-  countRow: {
-    paddingHorizontal: 20,
-    marginTop: 22,
     marginBottom: 12,
   },
 
   songCount: {
-    color: '#A17B38',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-
-  // SONG LIST
-
-  songList: {
-    paddingHorizontal: 18,
-  },
-
-  songCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E9E1D3',
-    borderRadius: 17,
-    padding: 16,
-    marginBottom: 15,
-    elevation: 2,
-    shadowColor: '#000000',
-    shadowOpacity: 0.06,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
-
-  songCardTitle: {
-    color: '#32165C',
-    fontSize: 19,
-    fontWeight: '800',
-    lineHeight: 28,
-  },
-
-  songArtist: {
-    color: '#A17B38',
+    color: '#888',
     fontSize: 12,
-    marginTop: 5,
-  },
-
-  // LYRICS
-
-  lyricsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 17,
-    paddingVertical: 4,
-  },
-
-  lyricsArrow: {
-    color: '#65409A',
-    fontSize: 12,
-    marginRight: 9,
-  },
-
-  lyricsToggleText: {
-    color: '#65409A',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  lyricsBox: {
-    backgroundColor: '#FAF8F4',
-    borderRadius: 10,
-    padding: 13,
     marginTop: 12,
+    marginBottom: 8,
   },
 
-  lyricsText: {
-    color: '#51495A',
+  statusContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 55,
+    paddingHorizontal: 20,
+  },
+
+  statusText: {
+    color: '#777',
     fontSize: 14,
-    lineHeight: 24,
-  },
-
-  // YOUTUBE
-
-  youtubeButton: {
-    backgroundColor: '#32165C',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginTop: 17,
-    alignItems: 'center',
-  },
-
-  youtubeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-
-  // LOADING AND ERROR STATES
-
-  stateContainer: {
-    paddingHorizontal: 22,
-    paddingVertical: 35,
-    alignItems: 'center',
-  },
-
-  stateText: {
-    color: '#77717F',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 12,
+    marginTop: 14,
   },
 
   errorText: {
-    color: '#B42318',
-    fontSize: 13,
+    color: '#A33B3B',
     textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 21,
   },
 
   retryButton: {
     backgroundColor: '#32165C',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingVertical: 11,
-    borderRadius: 10,
-    marginTop: 15,
+    borderRadius: 9,
+    marginTop: 16,
   },
 
-  retryText: {
+  retryButtonText: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: '600',
   },
 
   emptyIcon: {
-    color: '#A17B38',
+    color: '#D8B66C',
     fontSize: 42,
+    marginBottom: 12,
   },
 
   emptyTitle: {
-    color: '#32165C',
-    fontSize: 17,
-    fontWeight: '800',
-    marginTop: 12,
-    textAlign: 'center',
-  },
-
-  // FOOTER
-
-  libraryFooter: {
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 30,
-    marginTop: 10,
-  },
-
-  footerBrand: {
-    color: '#32165C',
+    color: '#24103F',
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+
+  emptyDescription: {
+    color: '#888',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  songCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#EEE8F0',
+  },
+
+  songIcon: {
+    width: 45,
+    height: 45,
+    borderRadius: 12,
+    backgroundColor: '#EEE8F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  songIconText: {
+    color: '#32165C',
+    fontSize: 25,
+    fontWeight: 'bold',
+  },
+
+  songInfo: {
+    flex: 1,
+    paddingRight: 8,
+  },
+
+  songTitle: {
+    color: '#24103F',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 5,
+  },
+
+  artist: {
+    color: '#777',
+    fontSize: 12,
+    marginBottom: 5,
+  },
+
+  songLanguage: {
+    color: '#A18450',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  viewButton: {
+    backgroundColor: '#32165C',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+
+  viewButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  footer: {
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#E8E0E9',
+    marginTop: 35,
+    paddingTop: 24,
+  },
+
+  footerLogo: {
+    color: '#32165C',
+    fontSize: 20,
+    fontWeight: 'bold',
   },
 
   footerTagline: {
-    color: '#98712F',
-    fontSize: 10,
-    marginTop: 7,
+    color: '#888',
+    fontSize: 11,
+    marginTop: 8,
     textAlign: 'center',
   },
 
   footerChurch: {
-    color: '#77717F',
-    fontSize: 9,
-    marginTop: 8,
+    color: '#A18450',
+    fontSize: 10,
+    letterSpacing: 2,
+    marginTop: 10,
   },
 });

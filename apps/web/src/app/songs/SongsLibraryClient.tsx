@@ -7,8 +7,10 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   getAllOfflineSongs,
+  saveSongs,
   type OfflineSong,
 } from '@/lib/offline/song-storage';
+import { toTeluguSearchQuery } from '@/lib/indic-transliteration';
 import VoiceSearchForm from './VoiceSearchForm';
 import DownloadAllSongs from './DownloadAllSongs';
 import FavouriteButton from './FavouriteButton';
@@ -34,40 +36,77 @@ export default function SongsLibraryClient({
   useEffect(() => {
     let active = true;
 
+    // Convert Roman-letter Telugu into Telugu script.
+    // English searches remain unchanged.
+    const searchTerm =
+      language === 'te'
+        ? toTeluguSearchQuery(search.trim())
+        : search.trim();
+
+    function filterSongs(savedSongs: OfflineSong[]) {
+      const term = searchTerm.toLowerCase();
+
+      return savedSongs.filter(
+        (song) =>
+          song.language === language &&
+          song.title.toLowerCase().includes(term)
+      );
+    }
+
     async function loadSongs() {
-      setLoading(true);
-      setError('');
+      if (active) {
+        setError('');
+        setOnline(navigator.onLine);
+      }
 
-      const supabase = createClient();
+      let cachedSongs: OfflineSong[] = [];
 
+      // STEP 1: Load downloaded songs from IndexedDB first.
       try {
+        cachedSongs = await getAllOfflineSongs();
+
+        if (active) {
+          setSongs(filterSongs(cachedSongs));
+
+          if (cachedSongs.length > 0) {
+            setLoading(false);
+          }
+        }
+      } catch {
+        if (active && !navigator.onLine) {
+          setError('Unable to access offline songs on this device.');
+        }
+      }
+
+      if (!active) return;
+
+      // STEP 2: Use downloaded songs when offline.
+      if (!navigator.onLine) {
+        setOnline(false);
+        setLoading(false);
+
+        if (cachedSongs.length === 0) {
+          setError(
+            'No downloaded songs are available. Connect to the internet and download songs first.'
+          );
+        }
+
+        return;
+      }
+
+      // STEP 3: Refresh songs from Supabase when online.
+      try {
+        const supabase = createClient();
+
         const {
           data: { session },
+          error: sessionError,
         } = await supabase.auth.getSession();
+
+        if (sessionError) throw sessionError;
 
         if (!session) {
           router.replace('/login');
-          return;
-        }
-
-        const isOnline = navigator.onLine;
-        if (active) setOnline(isOnline);
-
-        if (!isOnline) {
-          const savedSongs = await getAllOfflineSongs();
-
-          if (active) {
-            setSongs(
-              savedSongs.filter(
-                (song) =>
-                  song.language === language &&
-                  song.title.toLowerCase().includes(
-                    search.toLowerCase()
-                  )
-              )
-            );
-          }
-
           return;
         }
 
@@ -78,44 +117,51 @@ export default function SongsLibraryClient({
           )
           .eq('language', language)
           .order('created_at', { ascending: false })
-          .ilike('title', `%${search}%`);
+          .ilike('title', `%${searchTerm}%`);
 
         if (fetchError) throw fetchError;
 
+        if (!active) return;
+
+        const latestSongs = (data ?? []) as OfflineSong[];
+
+        // STEP 4: Save fetched songs without deleting other downloads.
+        try {
+          await saveSongs(latestSongs);
+        } catch (storageError) {
+          console.warn(
+            'Unable to update offline song storage:',
+            storageError
+          );
+        }
+
         if (active) {
-          setSongs((data ?? []) as OfflineSong[]);
+          setSongs(latestSongs);
+          setOnline(true);
+          setError('');
         }
       } catch (err) {
-        // If online loading fails, try the downloaded library.
-        try {
-          const savedSongs = await getAllOfflineSongs();
+        if (!active) return;
 
-          if (active) {
-            setSongs(
-              savedSongs.filter(
-                (song) =>
-                  song.language === language &&
-                  song.title.toLowerCase().includes(
-                    search.toLowerCase()
-                  )
-              )
-            );
-            setOnline(false);
-          }
-        } catch {
-          if (active) {
-            setError(
-              err instanceof Error
-                ? err.message
-                : 'Unable to load songs.'
-            );
-          }
+        console.warn('Unable to refresh songs:', err);
+
+        setOnline(false);
+
+        if (cachedSongs.length === 0) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Unable to load songs. Please try again.'
+          );
         }
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
+    setLoading(true);
     void loadSongs();
 
     const handleOnline = () => {
@@ -146,7 +192,10 @@ export default function SongsLibraryClient({
     <main className="min-h-screen bg-[#FAF8F4] text-[#24103F]">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[#24103F]/95 px-5 py-4 text-white shadow-lg backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-xl font-bold tracking-wide">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-xl font-bold tracking-wide"
+          >
             <span className="text-2xl text-[#D8B66C]">✦</span>
             WorshipVerse
           </Link>
@@ -246,7 +295,7 @@ export default function SongsLibraryClient({
           <p className="py-10 text-center text-gray-500">
             Loading songs...
           </p>
-        ) : error ? (
+        ) : error && songs.length === 0 ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">
             {error}
           </div>
@@ -312,6 +361,7 @@ export default function SongsLibraryClient({
         <p className="text-sm font-semibold text-[#32165C]">
           WorshipVerse <span className="text-[#D8B66C]">✦</span>
         </p>
+
         <p className="mt-1 text-xs text-gray-500">
           Every song, a prayer. Every lyric, an offering.
         </p>

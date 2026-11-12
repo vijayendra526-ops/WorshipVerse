@@ -1,7 +1,8 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import VoiceSearch from '@/components/VoiceSearch';
 
 type Props = {
@@ -14,10 +15,34 @@ export default function VoiceSearchForm({
   initialQuery,
 }: Props) {
   const [query, setQuery] = useState(initialQuery);
+  const router = useRouter();
+
+  useEffect(() => {
+    setQuery(initialQuery);
+  }, [initialQuery]);
+
+  function handleTranscript(transcript: string, isFinal: boolean) {
+    setQuery(transcript);
+
+    if (isFinal && transcript.trim()) {
+      const params = new URLSearchParams();
+
+      params.set('language', language);
+      params.set('q', transcript.trim());
+
+      router.replace(`/songs?${params.toString()}`, {
+        scroll: false,
+      });
+    }
+  }
 
   return (
     <div>
-      <form action="/songs" method="GET" className="mt-8 flex flex-wrap gap-2">
+      <form
+        action="/songs"
+        method="GET"
+        className="mt-8 flex flex-wrap gap-2"
+      >
         <input type="hidden" name="language" value={language} />
 
         <input
@@ -35,7 +60,7 @@ export default function VoiceSearchForm({
 
         <VoiceSearch
           language={language}
-          onTranscript={setQuery}
+          onTranscript={handleTranscript}
         />
 
         <button

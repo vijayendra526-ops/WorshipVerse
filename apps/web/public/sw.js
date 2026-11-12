@@ -1,12 +1,15 @@
 
-const CACHE_NAME = "worshipverse-v2";
+const CACHE_NAME = "worshipverse-v3";
 const OFFLINE_URL = "/offline";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
+
+      // Save the offline page so it can be opened without internet.
       await cache.add(OFFLINE_URL);
+
       await self.skipWaiting();
     })()
   );
@@ -15,16 +18,16 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      const keys = await caches.keys();
+      const cacheNames = await caches.keys();
 
       await Promise.all(
-        keys
+        cacheNames
           .filter(
-            (key) =>
-              key.startsWith("worshipverse-") &&
-              key !== CACHE_NAME
+            (name) =>
+              name.startsWith("worshipverse-") &&
+              name !== CACHE_NAME
           )
-          .map((key) => caches.delete(key))
+          .map((name) => caches.delete(name))
       );
 
       await self.clients.claim();
@@ -36,16 +39,47 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
+  // Only handle GET requests from this website.
   if (
     request.method !== "GET" ||
-    url.origin !== self.location.origin ||
-    url.pathname.startsWith("/api/") ||
-    url.pathname.startsWith("/auth/")
+    url.origin !== self.location.origin
   ) {
     return;
   }
 
-  // Cache Next.js static assets.
+  // Never cache authentication, API, or private account pages.
+  const privatePaths = [
+    "/api/",
+    "/auth/",
+    "/login",
+    "/admin",
+    "/profile",
+    "/favourites",
+    "/favorites",
+    "/playlists",
+    "/settings",
+  ];
+
+  if (privatePaths.some((path) => url.pathname.startsWith(path))) {
+    return;
+  }
+
+  // Let Next.js internal and server-component requests use the network.
+  if (
+    url.pathname.startsWith("/_next/") &&
+    !url.pathname.startsWith("/_next/static/")
+  ) {
+    return;
+  }
+
+  if (
+    request.headers.has("RSC") ||
+    url.searchParams.has("_rsc")
+  ) {
+    return;
+  }
+
+  // Cache-first for versioned Next.js static assets.
   if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(
       (async () => {
@@ -67,16 +101,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Do not cache Next.js server-component requests.
-  if (
-    url.pathname.startsWith("/_next/") ||
-    request.headers.has("RSC") ||
-    url.searchParams.has("_rsc")
-  ) {
-    return;
-  }
-
-  // Cache page navigations when online.
+  // Network-first for page navigation.
   if (request.mode === "navigate") {
     event.respondWith(
       (async () => {
@@ -90,9 +115,15 @@ self.addEventListener("fetch", (event) => {
 
           return response;
         } catch {
-          return (
-            (await caches.match(request)) ||
-            (await caches.match(OFFLINE_URL))
+          // Use the previously visited page if it is cached.
+          const cachedPage = await caches.match(request);
+
+          if (cachedPage) return cachedPage;
+
+          // Otherwise send the visitor to the offline song library.
+          return Response.redirect(
+            new URL(OFFLINE_URL, self.location.origin),
+            302
           );
         }
       })()
@@ -101,7 +132,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache images, icons and manifest.
+  // Cache-first for images, icons, and the web app manifest.
   if (
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/images/") ||

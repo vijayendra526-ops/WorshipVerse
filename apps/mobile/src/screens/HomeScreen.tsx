@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,49 +10,146 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Linking,
+  Modal,
+  Keyboard,
 } from 'react-native';
+
 import { supabase } from '../lib/supabase';
 import SongsScreen from './SongsScreen';
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
+import ProfileScreen from './ProfileScreen';
+import FavouritesScreen from './FavouritesScreen';
+import PlaylistsScreen from './PlaylistsScreen';
+import SettingsScreen from './SettingsScreen';
 
 type Language = 'en' | 'te';
-type Tab = 'Home' | 'Explore' | 'Favourites' | 'Profile';
 
 export default function HomeScreen() {
   const [language, setLanguage] = useState<Language>('en');
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<Tab>('Home');
+  const [userEmail, setUserEmail] = useState('');
+  const [profileOpen, setProfileOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedSongLanguage, setSelectedSongLanguage] =
-    useState<'te' | 'en' | null>(null);
+    useState<Language | null>(null);
+  const [initialSearch, setInitialSearch] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [voiceMessage, setVoiceMessage] = useState('');
+  const [showProfile, setShowProfile] = useState(false);
+  const [showFavourites, setShowFavourites] = useState(false);
+  const [showPlaylists, setShowPlaylists] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const isTe = language === 'te';
-  const [isListening, setIsListening] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? '');
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUserEmail(session?.user?.email ?? '');
+      }
+    );
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useSpeechRecognitionEvent('start', () => {
+    setIsListening(true);
+    setVoiceMessage(isTe ? 'వింటున్నాను...' : 'Listening...');
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results[0]?.transcript?.trim() ?? '';
+
+    if (transcript) {
+      setSearch(transcript);
+      setVoiceMessage(
+        isTe ? 'గుర్తించబడింది!' : 'Voice recognized!'
+      );
+    }
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    setIsListening(false);
+    setVoiceMessage(
+      event.message || event.error || 'Voice search failed.'
+    );
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+  });
 
   if (selectedSongLanguage) {
     return (
       <SongsScreen
         language={selectedSongLanguage}
-        onBack={() => setSelectedSongLanguage(null)}
+        initialSearch={initialSearch}
+        onBack={() => {
+          setSelectedSongLanguage(null);
+          setInitialSearch('');
+        }}
       />
     );
   }
 
-  const handleSignOut = async () => {
+  if (showProfile) {
+    return (
+      <ProfileScreen onBack={() => setShowProfile(false)} />
+    );
+  }
+
+  if (showFavourites) {
+    return (
+      <FavouritesScreen
+        onBack={() => setShowFavourites(false)}
+        onBrowseSongs={() => {
+          setShowFavourites(false);
+          setInitialSearch('');
+          setSelectedSongLanguage('en');
+        }}
+      />
+    );
+  }
+
+  if (showPlaylists) {
+    return (
+      <PlaylistsScreen
+        onBack={() => setShowPlaylists(false)}
+      />
+    );
+  }
+
+  if (showSettings) {
+    return (
+      <SettingsScreen
+        onBack={() => setShowSettings(false)}
+      />
+    );
+  }
+
+  async function handleSignOut() {
     setLoading(true);
+
     const { error } = await supabase.auth.signOut();
+
     setLoading(false);
 
     if (error) {
       Alert.alert('Sign Out Failed', error.message);
+      return;
     }
-  };
 
-  const handleSearch = () => {
+    setProfileOpen(false);
+  }
+
+  function handleSearch() {
     if (!search.trim()) {
       Alert.alert(
         isTe ? 'శోధన' : 'Search',
@@ -60,33 +158,59 @@ export default function HomeScreen() {
       return;
     }
 
-    Alert.alert(
-      isTe ? 'త్వరలో వస్తుంది' : 'Coming Soon',
-      isTe
-        ? 'పాటల శోధన త్వరలో అందుబాటులో ఉంటుంది.'
-        : 'Song search will be connected to the library soon.'
-    );
-  };
+    Keyboard.dismiss();
+    setInitialSearch(search.trim());
+    setSelectedSongLanguage(language);
+  }
 
-  const handleTab = (tab: Tab) => {
-    setActiveTab(tab);
+  async function startVoiceSearch() {
+    try {
+      setVoiceMessage('');
 
-    if (tab !== 'Home') {
-      Alert.alert(
-        tab,
-        `${tab} screen will be implemented next.`
+      const permission =
+        await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+
+      if (!permission.granted) {
+        setVoiceMessage(
+          isTe
+            ? 'మైక్రోఫోన్ అనుమతి అవసరం.'
+            : 'Microphone permission is required.'
+        );
+        return;
+      }
+
+      Keyboard.dismiss();
+
+      ExpoSpeechRecognitionModule.start({
+        lang: isTe ? 'te-IN' : 'en-IN',
+        interimResults: true,
+        continuous: false,
+      });
+    } catch (error) {
+      console.error('Voice search error:', error);
+      setIsListening(false);
+      setVoiceMessage(
+        isTe
+          ? 'వాయిస్ శోధన ప్రారంభించలేకపోయాము.'
+          : 'Unable to start voice search.'
       );
     }
-  };
+  }
+
+  function openLanguage(selectedLanguage: Language) {
+    setInitialSearch('');
+    setSearch('');
+    setSelectedSongLanguage(selectedLanguage);
+  }
 
   return (
     <View style={styles.screen}>
       <ScrollView
-        style={styles.container}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* HEADER */}
+        {/* WEBSITE HEADER */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
             <View style={styles.brand}>
@@ -95,7 +219,8 @@ export default function HomeScreen() {
                 style={styles.logo}
                 resizeMode="contain"
               />
-              <View>
+
+              <View style={styles.brandText}>
                 <Text style={styles.brandName}>WorshipVerse</Text>
                 <Text style={styles.brandSubtitle}>
                   SHARON A.G. CHURCH
@@ -103,24 +228,38 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={styles.languageButton}
-              onPress={() =>
-                setLanguage(isTe ? 'en' : 'te')
-              }
-            >
-              <Text style={styles.languageButtonText}>
-                {isTe ? 'English' : 'తెలుగు'}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.accountButton}
+                onPress={() => setProfileOpen(true)}
+              >
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {userEmail ? userEmail[0].toUpperCase() : 'U'}
+                  </Text>
+                </View>
+                <Text style={styles.accountArrow}>⌄</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.languageButton}
+                onPress={() => setLanguage(isTe ? 'en' : 'te')}
+              >
+                <Text style={styles.languageButtonText}>
+                  {isTe ? 'English' : 'తెలుగు'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
         {/* HERO */}
         <View style={styles.hero}>
-          <View style={styles.heroGlow} />
+          <View style={styles.heroGlowTop} />
+          <View style={styles.heroGlowBottom} />
 
           <View style={styles.eyebrowContainer}>
+            <View style={styles.goldDot} />
             <Text style={styles.eyebrow}>
               {isTe
                 ? 'ఆరాధన • స్తుతి • గీతాలు'
@@ -130,14 +269,12 @@ export default function HomeScreen() {
 
           <Text style={styles.heroTitle}>
             {isTe
-              ? 'మీ హృదయం ఆరాధనతో నిండాలి.'
-              : 'Let your heart sing.'}
+              ? 'ప్రతి పాట ఒక ప్రార్థన.'
+              : 'Let your heart'}
           </Text>
 
           <Text style={styles.heroHighlight}>
-            {isTe
-              ? 'కలిసి ఆరాధిద్దాం.'
-              : 'Worship together.'}
+            {isTe ? 'ప్రతి వాక్యం ఒక స్తుతి.' : 'sing in worship.'}
           </Text>
 
           <Text style={styles.heroSubtitle}>
@@ -163,187 +300,143 @@ export default function HomeScreen() {
             />
 
             <TouchableOpacity
+              style={[
+                styles.voiceButton,
+                isListening && styles.voiceButtonActive,
+              ]}
+              onPress={() => {
+                if (isListening) {
+                  ExpoSpeechRecognitionModule.stop();
+                } else {
+                  startVoiceSearch();
+                }
+              }}
+            >
+              <Text style={styles.voiceButtonText}>
+                {isListening ? '■' : '🎙'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.searchButton}
               onPress={handleSearch}
             >
               <Text style={styles.searchButtonText}>
-                {isTe ? 'వెతుకు' : 'Search'}
+                {isTe ? 'వెతకండి' : 'Search'}
               </Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.heroTags}>
-            ♫ Telugu Worship  •  ♫ English Worship
-          </Text>
-        </View>
+          {!!voiceMessage && (
+            <Text style={styles.voiceMessage}>{voiceMessage}</Text>
+          )}
 
-        {/* FEATURED SONGS */}
-        <View style={styles.section}>
-          <Text style={styles.eyebrowDark}>
-            HANDPICKED FOR WORSHIP
-          </Text>
-
-          <View style={styles.featuredHeading}>
-            <Text style={styles.sectionTitle}>
-              {isTe ? 'ప్రత్యేక గీతాలు' : 'Featured Songs'}
-            </Text>
-
-            <TouchableOpacity onPress={() => handleTab('Explore')}>
-              <Text style={styles.viewAll}>
-                {isTe ? 'అన్నీ చూడండి →' : 'View all →'}
-              </Text>
-            </TouchableOpacity>
+          <View style={styles.heroTags}>
+            <Text style={styles.heroTag}>♫ Telugu Worship</Text>
+            <Text style={styles.tagDot}>•</Text>
+            <Text style={styles.heroTag}>♫ English Worship</Text>
+            <Text style={styles.tagDot}>•</Text>
+            <Text style={styles.heroTag}>✦ Praise Together</Text>
           </View>
 
-          <View style={styles.featuredCard}>
-            <View style={styles.songArtwork}>
-              <Text style={styles.songArtworkIcon}>♫</Text>
-              <Text style={styles.songArtworkLabel}>
-                WORSHIPVERSE
-              </Text>
-            </View>
+          {/* WEBSITE HERO VISUAL PANEL */}
+          <View style={styles.visualOuter}>
+            <View style={styles.visualPanel}>
+              <View style={styles.visualCircle}>
+                <Text style={styles.visualMusic}>♫</Text>
+              </View>
 
-            <View style={styles.songInfo}>
-              <Text style={styles.songTitle}>
-                {isTe ? 'మీ ఆరాధన గీతాలు' : 'Your Worship Collection'}
-              </Text>
+              <Text style={styles.visualBrand}>WORSHIPVERSE</Text>
 
-              <Text style={styles.songLanguage}>
-                TELUGU & ENGLISH
+              <Text style={styles.visualTitle}>
+                {isTe ? 'స్తుతి గీతాలు' : 'Songs of Praise'}
               </Text>
 
-              <Text style={styles.songDescription}>
+              <Text style={styles.visualSubtitle}>
                 {isTe
-                  ? 'మీ ఆరాధన గీతాల సేకరణ.'
-                  : 'Your featured worship songs will appear here.'}
+                  ? 'కలిసి పాడుదాం. కలిసి ఆరాధిద్దాం.'
+                  : 'Sing together. Worship together. Grow together.'}
               </Text>
-            </View>
-          </View>
 
-          <View style={styles.featuredCard}>
-            <View style={[styles.songArtwork, styles.englishArtwork]}>
-              <Text style={styles.songArtworkIcon}>✦</Text>
-              <Text style={styles.songArtworkLabel}>
-                PRAISE & WORSHIP
+              <View style={styles.visualDivider} />
+
+              <Text style={styles.visualFooter}>
+                EVERY SONG, A PRAYER
               </Text>
             </View>
 
-            <View style={styles.songInfo}>
-              <Text style={styles.songTitle}>
-                {isTe ? 'కొత్త ఆరాధన గీతాలు' : 'Discover New Worship'}
-              </Text>
-
-              <Text style={styles.songLanguage}>
-                EXPLORE SONGS
-              </Text>
-
-              <Text style={styles.songDescription}>
-                {isTe
-                  ? 'కొత్త ఆరాధన గీతాలను కనుగొనండి.'
-                  : 'Find songs for personal and church worship.'}
-              </Text>
+            <View style={styles.visualBottom}>
+              <Text style={styles.visualChurch}>SHARON A.G. CHURCH</Text>
+              <Text style={styles.visualGold}>WORSHIPVERSE</Text>
             </View>
           </View>
         </View>
 
-        {/* LANGUAGE SECTION */}
-        <View style={styles.section}>
-          <Text style={styles.eyebrowDark}>
-            {isTe ? 'మీ ఆరాధనను కనుగొనండి' : 'FIND YOUR WORSHIP'}
+        {/* LANGUAGE SELECTION */}
+        <View style={styles.languageSection}>
+          <Text style={styles.sectionEyebrow}>
+            {isTe ? 'భాషను ఎంచుకోండి' : 'EXPLORE BY LANGUAGE'}
           </Text>
 
           <Text style={styles.sectionTitle}>
             {isTe
               ? 'మీ భాషలో ఆరాధించండి'
-              : 'Worship in Your Language'}
+              : 'Worship in your language.'}
           </Text>
 
           <Text style={styles.sectionSubtitle}>
             {isTe
               ? 'మీకు ఇష్టమైన భాషలో ఆరాధన గీతాలను కనుగొనండి.'
-              : 'Explore Christian worship songs and lyrics in Telugu and English.'}
+              : 'Discover songs of praise and worship in the language closest to your heart.'}
           </Text>
 
-          {/* TELUGU */}
+          {/* TELUGU CARD */}
           <TouchableOpacity
             style={styles.languageCard}
-            onPress={() => setSelectedSongLanguage('te')}
+            activeOpacity={0.85}
+            onPress={() => openLanguage('te')}
           >
-            <View style={styles.cardTop}>
-              <Text style={styles.teluguText}>తెలుగు</Text>
+            <View style={styles.cardDecoration} />
+
+            <Text style={styles.cardEyebrow}>
+              01 · TELUGU COLLECTION
+            </Text>
+
+            <Text style={styles.teluguCardTitle}>తెలుగు</Text>
+
+            <Text style={styles.cardDescription}>
+              Telugu Christian worship and praise songs
+            </Text>
+
+            <View style={styles.cardBottom}>
+              <Text style={styles.cardExplore}>EXPLORE SONGS</Text>
               <Text style={styles.cardArrow}>↗</Text>
             </View>
-
-            <Text style={styles.cardTitle}>
-              Telugu Worship Songs
-            </Text>
-
-            <Text style={styles.cardSubtitle}>
-              Find Telugu Christian worship, praise songs and lyrics.
-            </Text>
           </TouchableOpacity>
 
-          {/* ENGLISH */}
+          {/* ENGLISH CARD */}
           <TouchableOpacity
-            style={styles.languageCard}
-            onPress={() => setSelectedSongLanguage('en')}
+            style={[styles.languageCard, styles.englishCard]}
+            activeOpacity={0.85}
+            onPress={() => openLanguage('en')}
           >
-            <View style={styles.cardTop}>
-              <Text style={styles.englishSymbol}>Aa</Text>
+            <View style={styles.cardDecoration} />
+
+            <Text style={styles.cardEyebrow}>
+              02 · ENGLISH COLLECTION
+            </Text>
+
+            <Text style={styles.englishCardTitle}>English</Text>
+
+            <Text style={styles.cardDescription}>
+              English Christian worship and praise songs
+            </Text>
+
+            <View style={styles.cardBottom}>
+              <Text style={styles.cardExplore}>EXPLORE SONGS</Text>
               <Text style={styles.cardArrow}>↗</Text>
             </View>
-
-            <Text style={styles.cardTitle}>
-              English Worship Songs
-            </Text>
-
-            <Text style={styles.cardSubtitle}>
-              Discover English Christian worship, praise songs and lyrics.
-            </Text>
           </TouchableOpacity>
-        </View>
-
-        {/* EXPLORE */}
-        <View style={styles.exploreSection}>
-          <Text style={styles.eyebrowDark}>
-            EXPLORE WORSHIPVERSE
-          </Text>
-
-          <Text style={styles.sectionTitle}>
-            {isTe ? 'ఆరాధన అనుభవం' : 'Everything for Worship'}
-          </Text>
-
-          <View style={styles.featureCard}>
-            <Text style={styles.featureIcon}>♫</Text>
-            <Text style={styles.featureTitle}>Song Lyrics</Text>
-            <Text style={styles.featureDescription}>
-              Read and follow worship lyrics.
-            </Text>
-          </View>
-
-          <View style={styles.featureCard}>
-            <Text style={styles.featureIcon}>♡</Text>
-            <Text style={styles.featureTitle}>My Favourites</Text>
-            <Text style={styles.featureDescription}>
-              Keep your favourite songs together.
-            </Text>
-          </View>
-
-          <View style={styles.featureCard}>
-            <Text style={styles.featureIcon}>▤</Text>
-            <Text style={styles.featureTitle}>Playlists</Text>
-            <Text style={styles.featureDescription}>
-              Create your own worship collections.
-            </Text>
-          </View>
-
-          <View style={styles.featureCard}>
-            <Text style={styles.featureIcon}>▣</Text>
-            <Text style={styles.featureTitle}>Projector Mode</Text>
-            <Text style={styles.featureDescription}>
-              Present lyrics during church worship.
-            </Text>
-          </View>
         </View>
 
         {/* CALL TO ACTION */}
@@ -376,54 +469,96 @@ export default function HomeScreen() {
           <Text style={styles.footerCopyright}>
             © 2026 WorshipVerse · SHARON A.G. CHURCH
           </Text>
-
-          <TouchableOpacity
-            style={styles.logout}
-            onPress={handleSignOut}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#D8B66C" />
-            ) : (
-              <Text style={styles.logoutText}>Sign Out</Text>
-            )}
-          </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* FIXED BOTTOM NAVIGATION */}
-      <View style={styles.bottomNav}>
-        {[
-          { name: 'Home' as Tab, icon: '⌂', label: isTe ? 'హోమ్' : 'Home' },
-          { name: 'Explore' as Tab, icon: '⌕', label: isTe ? 'వెతుకు' : 'Explore' },
-          { name: 'Favourites' as Tab, icon: '♡', label: isTe ? 'ఇష్టమైనవి' : 'Favourites' },
-          { name: 'Profile' as Tab, icon: '◉', label: isTe ? 'ప్రొఫైల్' : 'Profile' },
-        ].map((tab) => (
+      {/* ACCOUNT MENU */}
+      <Modal
+        visible={profileOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProfileOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setProfileOpen(false)}
+        >
           <TouchableOpacity
-            key={tab.name}
-            style={styles.navItem}
-            onPress={() => handleTab(tab.name)}
+            activeOpacity={1}
+            style={styles.accountMenu}
+            onPress={() => {}}
           >
-            <Text
-              style={[
-                styles.navIcon,
-                activeTab === tab.name && styles.activeNavIcon,
-              ]}
-            >
-              {tab.icon}
+            <Text style={styles.accountMenuTitle}>My Account</Text>
+
+            <Text style={styles.accountMenuLabel}>Signed in as</Text>
+            <Text style={styles.accountEmail}>
+              {userEmail || 'WorshipVerse Member'}
             </Text>
 
-            <Text
-              style={[
-                styles.navLabel,
-                activeTab === tab.name && styles.activeNavLabel,
-              ]}
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => {
+                setProfileOpen(false);
+                setShowProfile(true);
+              }}
             >
-              {tab.label}
-            </Text>
+              <Text style={styles.menuButtonText}>My Profile</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => {
+                setProfileOpen(false);
+                setShowFavourites(true);
+              }}
+            >
+              <Text style={styles.menuButtonText}>My Favourites</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => {
+                setProfileOpen(false);
+                setShowPlaylists(true);
+              }}
+            >
+              <Text style={styles.menuButtonText}>My Playlists</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => {
+                setProfileOpen(false);
+                setShowSettings(true);
+              }}
+            >
+              <Text style={styles.menuButtonText}>Account Settings</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuButton}
+              onPress={() => setProfileOpen(false)}
+            >
+              <Text style={styles.menuButtonText}>Close</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.signOutButton}
+              onPress={handleSignOut}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#B42318" />
+              ) : (
+                <Text style={styles.signOutText}>Sign Out</Text>
+              )}
+            </TouchableOpacity>
           </TouchableOpacity>
-        ))}
-      </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -433,16 +568,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAF8F4',
   },
-  container: {
-    flex: 1,
-  },
   scrollContent: {
-    paddingBottom: 12,
+    paddingBottom: 0,
   },
-  // HEADER
   header: {
     backgroundColor: '#24103F',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 14,
   },
   headerContent: {
@@ -453,128 +584,287 @@ const styles = StyleSheet.create({
   brand: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   logo: {
-    width: 52,
-    height: 52,
+    width: 45,
+    height: 45,
     borderRadius: 10,
+  },
+  brandText: {
+    marginLeft: 9,
   },
   brandName: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
-    marginLeft: 10,
   },
   brandSubtitle: {
     color: '#D8B66C',
     fontSize: 8,
-    letterSpacing: 1.5,
-    marginLeft: 10,
+    letterSpacing: 1.4,
     marginTop: 3,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  accountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D8B66C80',
+    borderRadius: 25,
+    padding: 4,
+    gap: 5,
+  },
+  avatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#D8B66C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#24103F',
+    fontWeight: '800',
+  },
+  accountArrow: {
+    color: '#FFFFFF',
+    paddingHorizontal: 5,
   },
   languageButton: {
     borderWidth: 1,
     borderColor: '#D8B66C',
-    borderRadius: 20,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
+    borderRadius: 22,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
   },
   languageButtonText: {
     color: '#D8B66C',
+    fontSize: 11,
     fontWeight: '700',
-    fontSize: 12,
   },
-  // HERO
   hero: {
     backgroundColor: '#24103F',
-    marginHorizontal: 14,
-    marginTop: 16,
-    padding: 22,
-    borderRadius: 23,
+    marginHorizontal: 12,
+    marginTop: 14,
+    padding: 19,
+    borderRadius: 24,
     overflow: 'hidden',
   },
-  heroGlow: {
+  heroGlowTop: {
     position: 'absolute',
-    width: 170,
-    height: 170,
+    width: 190,
+    height: 190,
     borderRadius: 100,
     backgroundColor: '#65409A',
     opacity: 0.25,
-    right: -65,
-    top: -65,
+    right: -75,
+    top: -75,
+  },
+  heroGlowBottom: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 100,
+    backgroundColor: '#D8B66C',
+    opacity: 0.08,
+    left: -90,
+    bottom: -90,
   },
   eyebrowContainer: {
     alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     borderWidth: 1,
     borderColor: '#D8B66C66',
     backgroundColor: '#FFFFFF10',
     paddingHorizontal: 11,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 20,
+  },
+  goldDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#D8B66C',
   },
   eyebrow: {
     color: '#D8B66C',
     fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
   },
   heroTitle: {
     color: '#FFFFFF',
     fontSize: 34,
     lineHeight: 43,
-    fontWeight: '800',
-    marginTop: 23,
+    fontWeight: '700',
+    marginTop: 26,
   },
   heroHighlight: {
     color: '#D8B66C',
-    fontSize: 25,
+    fontSize: 27,
+    lineHeight: 36,
     fontWeight: '700',
-    marginTop: 5,
+    marginTop: 4,
   },
   heroSubtitle: {
     color: '#E8DFF2',
-    fontSize: 14,
-    lineHeight: 23,
-    marginTop: 15,
+    fontSize: 13,
+    lineHeight: 22,
+    marginTop: 16,
   },
   searchContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 13,
+    borderRadius: 14,
     padding: 5,
-    marginTop: 23,
+    marginTop: 22,
     flexDirection: 'row',
     alignItems: 'center',
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     color: '#24103F',
     fontSize: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 11,
+    paddingHorizontal: 9,
+    paddingVertical: 12,
   },
   searchButton: {
     backgroundColor: '#D8B66C',
     borderRadius: 10,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 13,
   },
   searchButtonText: {
     color: '#24103F',
     fontWeight: '800',
     fontSize: 11,
   },
+  voiceButton: {
+    width: 38,
+    height: 40,
+    backgroundColor: '#32165C',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 5,
+  },
+  voiceButtonActive: {
+    backgroundColor: '#B42318',
+  },
+  voiceButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+  },
+  voiceMessage: {
+    color: '#D8B66C',
+    fontSize: 11,
+    marginTop: 9,
+  },
   heroTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 17,
+    gap: 6,
+  },
+  heroTag: {
     color: '#E8DFF2',
+    fontSize: 9,
+  },
+  tagDot: {
+    color: '#D8B66C',
     fontSize: 10,
+  },
+  visualOuter: {
+    marginTop: 28,
+    borderWidth: 1,
+    borderColor: '#FFFFFF26',
+    borderRadius: 24,
+    padding: 9,
+    backgroundColor: '#FFFFFF10',
+  },
+  visualPanel: {
+    minHeight: 300,
+    borderRadius: 19,
+    backgroundColor: '#43236F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 22,
+  },
+  visualCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 1,
+    borderColor: '#D8B66C',
+    backgroundColor: '#FFFFFF12',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  visualMusic: {
+    color: '#D8B66C',
+    fontSize: 43,
+  },
+  visualBrand: {
+    color: '#D8B66C',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 3,
+    marginTop: 27,
+  },
+  visualTitle: {
+    color: '#FFFFFF',
+    fontSize: 29,
+    fontWeight: '700',
+    marginTop: 12,
+  },
+  visualSubtitle: {
+    color: '#FFFFFFAA',
+    textAlign: 'center',
+    fontSize: 12,
+    lineHeight: 20,
+    marginTop: 12,
+  },
+  visualDivider: {
+    width: 55,
+    height: 1,
+    backgroundColor: '#D8B66C',
+    marginTop: 22,
+  },
+  visualFooter: {
+    color: '#FFFFFF88',
+    fontSize: 9,
+    letterSpacing: 2,
     marginTop: 17,
   },
-  // SECTION
-  section: {
-    paddingHorizontal: 18,
-    paddingTop: 35,
-    paddingBottom: 15,
+  visualBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    paddingVertical: 15,
   },
-  eyebrowDark: {
+  visualChurch: {
+    color: '#FFFFFF99',
+    fontSize: 9,
+  },
+  visualGold: {
+    color: '#D8B66C',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  languageSection: {
+    paddingHorizontal: 18,
+    paddingTop: 34,
+    paddingBottom: 30,
+  },
+  sectionEyebrow: {
     color: '#A17B38',
     fontSize: 10,
     fontWeight: '800',
@@ -582,155 +872,86 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: '#32165C',
-    fontSize: 25,
-    fontWeight: '800',
-    marginTop: 10,
+    fontSize: 28,
+    lineHeight: 36,
+    fontWeight: '700',
+    marginTop: 12,
   },
   sectionSubtitle: {
     color: '#77717F',
     fontSize: 13,
-    lineHeight: 21,
-    marginTop: 9,
-    marginBottom: 20,
+    lineHeight: 22,
+    marginTop: 12,
+    marginBottom: 22,
   },
-  // FEATURED SONGS
-  featuredHeading: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  viewAll: {
-    color: '#98712F',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  featuredCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: '#E9E1D3',
-    padding: 12,
-    marginTop: 14,
-    alignItems: 'center',
-  },
-  songArtwork: {
-    width: 95,
-    height: 100,
-    borderRadius: 13,
-    backgroundColor: '#32165C',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  englishArtwork: {
-    backgroundColor: '#65409A',
-  },
-  songArtworkIcon: {
-    color: '#D8B66C',
-    fontSize: 38,
-  },
-  songArtworkLabel: {
-    color: '#FFFFFF',
-    fontSize: 7,
-    letterSpacing: 1,
-    marginTop: 6,
-  },
-  songInfo: {
-    flex: 1,
-    paddingLeft: 13,
-  },
-  songTitle: {
-    color: '#32165C',
-    fontWeight: '800',
-    fontSize: 14,
-  },
-  songLanguage: {
-    color: '#A17B38',
-    fontSize: 9,
-    fontWeight: '800',
-    marginTop: 7,
-    letterSpacing: 1,
-  },
-  songDescription: {
-    color: '#77717F',
-    fontSize: 11,
-    lineHeight: 17,
-    marginTop: 6,
-  },
-  // LANGUAGE CARDS
   languageCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E9E1D3',
-    borderRadius: 19,
-    padding: 20,
-    marginBottom: 14,
-  },
-  cardTop: {
-    flexDirection: 'row',
+    backgroundColor: '#24103F',
+    borderRadius: 24,
+    padding: 22,
+    minHeight: 245,
     justifyContent: 'space-between',
+    marginBottom: 15,
+    overflow: 'hidden',
+  },
+  englishCard: {
+    backgroundColor: '#43236F',
+  },
+  cardDecoration: {
+    position: 'absolute',
+    width: 170,
+    height: 170,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: '#FFFFFF20',
+    right: -45,
+    top: -55,
+  },
+  cardEyebrow: {
+    color: '#D8B66C',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
+  teluguCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 43,
+    fontWeight: '700',
+    marginTop: 30,
+  },
+  englishCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 43,
+    fontWeight: '700',
+    marginTop: 30,
+  },
+  cardDescription: {
+    color: '#FFFFFFAA',
+    fontSize: 12,
+    marginTop: 8,
+  },
+  cardBottom: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#FFFFFF25',
+    paddingTop: 17,
+    marginTop: 24,
   },
-  teluguText: {
-    color: '#32165C',
-    fontSize: 34,
+  cardExplore: {
+    color: '#D8B66C',
+    fontSize: 10,
     fontWeight: '800',
-  },
-  englishSymbol: {
-    color: '#32165C',
-    fontSize: 38,
-    fontWeight: '800',
+    letterSpacing: 1.5,
   },
   cardArrow: {
-    color: '#98712F',
-    fontSize: 23,
+    color: '#D8B66C',
+    fontSize: 25,
   },
-  cardTitle: {
-    color: '#32165C',
-    fontSize: 18,
-    fontWeight: '800',
-    marginTop: 16,
-  },
-  cardSubtitle: {
-    color: '#77717F',
-    fontSize: 12,
-    lineHeight: 20,
-    marginTop: 7,
-  },
-  // EXPLORE FEATURES
-  exploreSection: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 18,
-    paddingVertical: 35,
-  },
-  featureCard: {
-    backgroundColor: '#FAF8F4',
-    borderWidth: 1,
-    borderColor: '#EEE8DF',
-    borderRadius: 17,
-    padding: 19,
-    marginTop: 14,
-  },
-  featureIcon: {
-    color: '#A17B38',
-    fontSize: 30,
-  },
-  featureTitle: {
-    color: '#32165C',
-    fontSize: 16,
-    fontWeight: '800',
-    marginTop: 10,
-  },
-  featureDescription: {
-    color: '#77717F',
-    fontSize: 12,
-    marginTop: 6,
-  },
-  // CALL TO ACTION
   cta: {
     backgroundColor: '#32165C',
-    paddingHorizontal: 22,
-    paddingVertical: 38,
+    paddingHorizontal: 24,
+    paddingVertical: 43,
     alignItems: 'center',
   },
   ctaEyebrow: {
@@ -741,10 +962,10 @@ const styles = StyleSheet.create({
   },
   ctaTitle: {
     color: '#FFFFFF',
-    fontSize: 25,
-    fontWeight: '800',
+    fontSize: 26,
+    fontWeight: '700',
     textAlign: 'center',
-    marginTop: 15,
+    marginTop: 17,
   },
   ctaDescription: {
     color: '#E8DFF2',
@@ -753,10 +974,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
-  // FOOTER
   footer: {
     backgroundColor: '#1B0D2D',
-    padding: 25,
+    padding: 28,
     alignItems: 'center',
   },
   footerBrand: {
@@ -767,52 +987,66 @@ const styles = StyleSheet.create({
   footerTagline: {
     color: '#D8B66C',
     fontSize: 10,
-    marginTop: 8,
+    marginTop: 9,
     textAlign: 'center',
   },
   footerCopyright: {
     color: '#A69BAF',
     fontSize: 9,
-    marginTop: 17,
+    marginTop: 19,
     textAlign: 'center',
   },
-  logout: {
-    paddingVertical: 15,
-    paddingHorizontal: 25,
-    marginTop: 12,
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: '#00000088',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
   },
-  logoutText: {
-    color: '#D8B66C',
+  accountMenu: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 22,
+  },
+  accountMenuTitle: {
+    color: '#32165C',
+    fontSize: 21,
+    fontWeight: '800',
+  },
+  accountMenuLabel: {
+    color: '#77717F',
+    fontSize: 12,
+    marginTop: 20,
+  },
+  accountEmail: {
+    color: '#32165C',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 5,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#E9E1D3',
+    marginTop: 20,
+  },
+  menuButton: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  menuButtonText: {
+    color: '#32165C',
     fontWeight: '700',
   },
-  // BOTTOM NAVIGATION
-  bottomNav: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+  signOutButton: {
     borderTopWidth: 1,
     borderTopColor: '#E9E1D3',
-    paddingTop: 10,
-    paddingBottom: 12,
-    justifyContent: 'space-around',
-  },
-  navItem: {
+    paddingTop: 15,
     alignItems: 'center',
-    flex: 1,
   },
-  navIcon: {
-    fontSize: 24,
-    color: '#93899D',
-  },
-  activeNavIcon: {
-    color: '#65409A',
-  },
-  navLabel: {
-    fontSize: 10,
-    color: '#93899D',
-    marginTop: 4,
-  },
-  activeNavLabel: {
-    color: '#32165C',
-    fontWeight: '800',
+  signOutText: {
+    color: '#B42318',
+    fontWeight: '700',
   },
 });
