@@ -5,6 +5,7 @@ export type OfflineSong = {
   artist: string | null;
   language: 'te' | 'en';
   lyrics: string;
+  lyrics_transliteration?: string | null;
   youtube_url: string | null;
   created_at: string;
 };
@@ -76,7 +77,9 @@ export async function getAllOfflineSongs(): Promise<OfflineSong[]> {
         .objectStore(STORE_NAME)
         .getAll();
 
-      request.onsuccess = () => resolve(request.result as OfflineSong[]);
+      request.onsuccess = () =>
+        resolve(request.result as OfflineSong[]);
+
       request.onerror = () => reject(request.error);
     });
   } finally {

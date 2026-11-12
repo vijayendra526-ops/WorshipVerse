@@ -13,6 +13,7 @@ export default function EditSongPage() {
   const [title, setTitle] = useState('');
   const [language, setLanguage] = useState<'te' | 'en'>('te');
   const [lyrics, setLyrics] = useState('');
+  const [lyricsTransliteration, setLyricsTransliteration] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,7 +44,9 @@ export default function EditSongPage() {
 
         const { data: song, error } = await supabase
           .from('songs')
-          .select('title, language, lyrics, youtube_url')
+          .select(
+            'title, language, lyrics, lyrics_transliteration, youtube_url'
+          )
           .eq('id', params.id)
           .single();
 
@@ -52,6 +55,7 @@ export default function EditSongPage() {
         setTitle(song.title);
         setLanguage(song.language);
         setLyrics(song.lyrics);
+        setLyricsTransliteration(song.lyrics_transliteration ?? '');
         setYoutubeUrl(song.youtube_url ?? '');
       } catch (error) {
         setMessage(
@@ -65,7 +69,9 @@ export default function EditSongPage() {
     loadSong();
   }, [params.id, router]);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    e: React.FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
     setSaving(true);
     setMessage('');
@@ -79,7 +85,9 @@ export default function EditSongPage() {
         error: authError,
       } = await supabase.auth.getUser();
 
-      if (authError || !user) throw new Error('Please sign in again.');
+      if (authError || !user) {
+        throw new Error('Please sign in again.');
+      }
 
       const role = user.app_metadata?.role;
 
@@ -87,12 +95,37 @@ export default function EditSongPage() {
         throw new Error('You are not authorized to edit songs.');
       }
 
+      if (!title.trim()) {
+        throw new Error('Please enter the song title.');
+      }
+
+      if (!lyrics.trim()) {
+        throw new Error('Please enter the song lyrics.');
+      }
+
+      if (
+        language === 'te' &&
+        !lyricsTransliteration.trim()
+      ) {
+        throw new Error('Please enter the Telugu transliteration.');
+      }
+
       if (youtubeUrl.trim()) {
-        const url = new URL(youtubeUrl.trim());
+        let url: URL;
+
+        try {
+          url = new URL(youtubeUrl.trim());
+        } catch {
+          throw new Error('Please enter a valid YouTube link.');
+        }
 
         if (
-          !['youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com']
-            .includes(url.hostname)
+          ![
+            'youtube.com',
+            'www.youtube.com',
+            'youtu.be',
+            'm.youtube.com',
+          ].includes(url.hostname)
         ) {
           throw new Error('Please enter a valid YouTube link.');
         }
@@ -104,6 +137,10 @@ export default function EditSongPage() {
           title: title.trim(),
           language,
           lyrics: lyrics.trim(),
+          lyrics_transliteration:
+            language === 'te'
+              ? lyricsTransliteration.trim()
+              : null,
           youtube_url: youtubeUrl.trim() || null,
           updated_at: new Date().toISOString(),
         })
@@ -115,7 +152,9 @@ export default function EditSongPage() {
       setMessage('Song updated successfully!');
     } catch (error) {
       setMessage(
-        error instanceof Error ? error.message : 'Unable to update song.'
+        error instanceof Error
+          ? error.message
+          : 'Unable to update song.'
       );
     } finally {
       setSaving(false);
@@ -125,7 +164,9 @@ export default function EditSongPage() {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#FAF8F4]">
-        <p className="font-semibold text-[#32165C]">Loading song...</p>
+        <p className="font-semibold text-[#32165C]">
+          Loading song...
+        </p>
       </main>
     );
   }
@@ -160,7 +201,11 @@ export default function EditSongPage() {
           <p className="text-xs font-semibold tracking-[0.2em] text-[#D8B66C]">
             SONG EDITOR
           </p>
-          <h2 className="mt-2 text-xl font-bold">Every Verse, A Praise.</h2>
+
+          <h2 className="mt-2 text-xl font-bold">
+            Every Verse, A Praise.
+          </h2>
+
           <p className="mt-2 text-sm text-white/70">
             Make changes to your published worship song.
           </p>
@@ -170,10 +215,12 @@ export default function EditSongPage() {
           onSubmit={handleSubmit}
           className="space-y-7 rounded-2xl border border-[#EDE5D8] bg-white p-6 shadow-sm sm:p-9"
         >
+          {/* Song Title */}
           <div>
             <label className="mb-2 block text-sm font-bold text-[#32165C]">
               Song Title *
             </label>
+
             <input
               required
               value={title}
@@ -182,6 +229,7 @@ export default function EditSongPage() {
             />
           </div>
 
+          {/* Song Language */}
           <div>
             <label className="mb-3 block text-sm font-bold text-[#32165C]">
               Song Language *
@@ -198,7 +246,9 @@ export default function EditSongPage() {
                 }`}
               >
                 తెలుగు
-                <span className="mt-1 block text-xs opacity-70">Telugu</span>
+                <span className="mt-1 block text-xs opacity-70">
+                  Telugu
+                </span>
               </button>
 
               <button
@@ -215,23 +265,53 @@ export default function EditSongPage() {
             </div>
           </div>
 
+          {/* Original Lyrics */}
           <div>
             <label className="mb-2 block text-sm font-bold text-[#32165C]">
               Song Lyrics *
             </label>
+
             <textarea
               required
               rows={14}
               value={lyrics}
               onChange={(e) => setLyrics(e.target.value)}
+              placeholder="Enter the original song lyrics..."
               className="w-full resize-y rounded-xl border border-[#E5DFD5] bg-[#FAF8F4] px-4 py-4 leading-7 text-gray-900 outline-none focus:border-[#A17B39]"
             />
           </div>
 
+          {/* Telugu Transliteration */}
+          {language === 'te' && (
+            <div>
+              <label className="mb-2 block text-sm font-bold text-[#32165C]">
+                Telugu Transliteration (English Letters) *
+              </label>
+
+              <textarea
+                required
+                rows={14}
+                value={lyricsTransliteration}
+                onChange={(e) =>
+                  setLyricsTransliteration(e.target.value)
+                }
+                placeholder={`Example:\nYesu Naa Rakshakudu\nNannu Preminchina Devudu`}
+                className="w-full resize-y rounded-xl border border-[#E5DFD5] bg-[#FAF8F4] px-4 py-4 leading-7 text-gray-900 outline-none focus:border-[#A17B39]"
+              />
+
+              <p className="mt-2 text-xs text-gray-500">
+                Write the Telugu song using English letters.
+                This is transliteration, not an English translation.
+              </p>
+            </div>
+          )}
+
+          {/* YouTube Link */}
           <div>
             <label className="mb-2 block text-sm font-bold text-[#32165C]">
               YouTube Link (Optional)
             </label>
+
             <input
               type="url"
               value={youtubeUrl}
@@ -241,6 +321,7 @@ export default function EditSongPage() {
             />
           </div>
 
+          {/* Status Message */}
           {message && (
             <p
               role="status"
@@ -254,6 +335,7 @@ export default function EditSongPage() {
             </p>
           )}
 
+          {/* Actions */}
           <div className="flex flex-wrap gap-3 border-t border-[#F0EBE3] pt-6">
             <button
               type="submit"

@@ -74,7 +74,7 @@ export default function SongsLibraryClient({
         const { data, error: fetchError } = await supabase
           .from('songs')
           .select(
-            'id, title, artist, language, lyrics, youtube_url, created_at'
+            'id, title, artist, language, lyrics, lyrics_transliteration, youtube_url, created_at'
           )
           .eq('language', language)
           .order('created_at', { ascending: false })

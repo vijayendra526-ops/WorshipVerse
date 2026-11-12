@@ -11,6 +11,10 @@ import {
 } from '@/lib/offline/song-storage';
 import FavouriteButton from './FavouriteButton';
 
+type SongWithTransliteration = OfflineSong & {
+  lyrics_transliteration?: string | null;
+};
+
 type Props = {
   id: string;
 };
@@ -18,7 +22,7 @@ type Props = {
 export default function SongDetailClient({ id }: Props) {
   const router = useRouter();
 
-  const [song, setSong] = useState<OfflineSong | null>(null);
+  const [song, setSong] = useState<SongWithTransliteration | null>(null);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [error, setError] = useState('');
@@ -44,9 +48,7 @@ export default function SongDetailClient({ id }: Props) {
 
         if (!navigator.onLine) {
           const savedSongs = await getAllOfflineSongs();
-          const savedSong = savedSongs.find(
-            (item) => item.id === id
-          );
+          const savedSong = savedSongs.find((item) => item.id === id);
 
           if (!savedSong) {
             throw new Error(
@@ -55,7 +57,7 @@ export default function SongDetailClient({ id }: Props) {
           }
 
           if (active) {
-            setSong(savedSong);
+            setSong(savedSong as SongWithTransliteration);
             setOffline(true);
           }
 
@@ -65,7 +67,7 @@ export default function SongDetailClient({ id }: Props) {
         const { data, error: fetchError } = await supabase
           .from('songs')
           .select(
-            'id, title, artist, language, lyrics, youtube_url, created_at'
+            'id, title, artist, language, lyrics, lyrics_transliteration, youtube_url, created_at'
           )
           .eq('id', id)
           .single();
@@ -73,18 +75,16 @@ export default function SongDetailClient({ id }: Props) {
         if (fetchError) throw fetchError;
 
         if (active) {
-          setSong(data as OfflineSong);
+          setSong(data as SongWithTransliteration);
           setOffline(false);
         }
       } catch (err) {
         try {
           const savedSongs = await getAllOfflineSongs();
-          const savedSong = savedSongs.find(
-            (item) => item.id === id
-          );
+          const savedSong = savedSongs.find((item) => item.id === id);
 
           if (savedSong && active) {
-            setSong(savedSong);
+            setSong(savedSong as SongWithTransliteration);
             setOffline(true);
           } else if (active) {
             setError(
@@ -147,6 +147,7 @@ export default function SongDetailClient({ id }: Props) {
   }
 
   const isTelugu = song.language === 'te';
+  const transliteration = song.lyrics_transliteration?.trim();
 
   return (
     <main className="min-h-screen bg-white text-[#333333]">
@@ -214,12 +215,53 @@ export default function SongDetailClient({ id }: Props) {
             </h2>
           </div>
 
-          <p className="whitespace-pre-wrap break-words text-lg leading-9 text-[#333333] sm:text-xl sm:leading-[2.5rem]">
-            {song.lyrics ||
-              (isTelugu
-                ? 'సాహిత్యం అందుబాటులో లేదు.'
-                : 'Lyrics are not available yet.')}
-          </p>
+          {isTelugu ? (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
+              {/* Original Telugu Lyrics */}
+              <div className="rounded-2xl border border-[#EAE5DC] bg-[#FAF8F4] p-5 sm:p-7">
+                <div className="mb-5 flex items-center justify-between gap-2 border-b border-[#EAE5DC] pb-4">
+                  <h3 className="font-bold text-[#32165C]">
+                    తెలుగు సాహిత్యం
+                  </h3>
+
+                  <span className="rounded-full bg-[#32165C]/10 px-3 py-1 text-xs font-semibold text-[#32165C]">
+                    Telugu
+                  </span>
+                </div>
+
+                <p className="whitespace-pre-wrap break-words text-lg leading-9 text-[#333333] sm:text-xl sm:leading-[2.5rem]">
+                  {song.lyrics || 'సాహిత్యం అందుబాటులో లేదు.'}
+                </p>
+              </div>
+
+              {/* Telugu Transliteration */}
+              <div className="rounded-2xl border border-[#EAE5DC] bg-white p-5 sm:p-7">
+                <div className="mb-5 flex items-center justify-between gap-2 border-b border-[#EAE5DC] pb-4">
+                  <h3 className="font-bold text-[#32165C]">
+                    English Transliteration
+                  </h3>
+
+                  <span className="rounded-full bg-[#D8B66C]/20 px-3 py-1 text-xs font-semibold text-[#8B6B35]">
+                    Roman Telugu
+                  </span>
+                </div>
+
+                {transliteration ? (
+                  <p className="whitespace-pre-wrap break-words text-lg leading-9 text-[#333333] sm:text-xl sm:leading-[2.5rem]">
+                    {transliteration}
+                  </p>
+                ) : (
+                  <p className="text-sm leading-7 text-gray-500">
+                    Transliteration is not available for this song yet.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap break-words text-lg leading-9 text-[#333333] sm:text-xl sm:leading-[2.5rem]">
+              {song.lyrics || 'Lyrics are not available yet.'}
+            </p>
+          )}
         </div>
 
         <div className="mt-auto border-t border-[#EAE5DC] pt-6">

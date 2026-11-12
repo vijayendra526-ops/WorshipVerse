@@ -36,7 +36,7 @@ export default function DownloadAllSongs() {
         const { data, error } = await supabase
           .from('songs')
           .select(
-            'id, title, artist, language, lyrics, youtube_url, created_at'
+            'id, title, artist, language, lyrics, lyrics_transliteration, youtube_url, created_at'
           )
           .in('language', ['te', 'en'])
           .order('created_at', { ascending: false })
@@ -47,7 +47,9 @@ export default function DownloadAllSongs() {
         const batch = (data ?? []) as OfflineSong[];
         allSongs.push(...batch);
 
-        setMessage(`Preparing songs... ${allSongs.length} downloaded`);
+        setMessage(
+          `Preparing songs... ${allSongs.length} downloaded`
+        );
 
         if (batch.length < pageSize) break;
 
@@ -80,6 +82,7 @@ export default function DownloadAllSongs() {
 
       <p className="mt-2 text-sm text-gray-600">
         Download all published Telugu and English songs to this device.
+        Telugu transliterations are included.
       </p>
 
       <button
@@ -92,7 +95,10 @@ export default function DownloadAllSongs() {
       </button>
 
       {message && (
-        <p className="mt-3 text-sm text-[#65409A]" aria-live="polite">
+        <p
+          className="mt-3 text-sm text-[#65409A]"
+          aria-live="polite"
+        >
           {message}
         </p>
       )}

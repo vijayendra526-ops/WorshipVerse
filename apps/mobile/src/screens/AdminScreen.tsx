@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
+
 import {
   View,
   Text,
@@ -12,6 +13,7 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
+
 import { supabase } from '../lib/supabase';
 
 const COLORS = {
@@ -36,6 +38,7 @@ export default function AdminScreen() {
   const [title, setTitle] = useState('');
   const [language, setLanguage] = useState<'te' | 'en'>('te');
   const [lyrics, setLyrics] = useState('');
+  const [lyricsTransliteration, setLyricsTransliteration] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -81,9 +84,18 @@ export default function AdminScreen() {
       return;
     }
 
+    if (language === 'te' && !lyricsTransliteration.trim()) {
+      Alert.alert(
+        'Missing Details',
+        'Please enter the English transliteration of Telugu lyrics.'
+      );
+      return;
+    }
+
     if (youtubeUrl.trim()) {
       try {
         const parsedUrl = new URL(youtubeUrl.trim());
+
         const allowedHosts = [
           'youtube.com',
           'www.youtube.com',
@@ -106,53 +118,62 @@ export default function AdminScreen() {
 
     setSaving(true);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    if (
-      userError ||
-      !user ||
-      !['admin', 'super_admin'].includes(
-        String(user.app_metadata?.role)
-      )
-    ) {
-      setSaving(false);
+      if (
+        userError ||
+        !user ||
+        !['admin', 'super_admin'].includes(
+          String(user.app_metadata?.role)
+        )
+      ) {
+        Alert.alert(
+          'Access Denied',
+          'Administrator access is required.'
+        );
+        return;
+      }
+
+      const { error } = await supabase.from('songs').insert({
+        title: title.trim(),
+        language,
+        lyrics: lyrics.trim(),
+        lyrics_transliteration:
+          language === 'te' ? lyricsTransliteration.trim() : null,
+        youtube_url: youtubeUrl.trim() || null,
+        created_by: user.id,
+      });
+
+      if (error) {
+        Alert.alert('Could Not Publish', error.message);
+        return;
+      }
+
+      setTitle('');
+      setLanguage('te');
+      setLyrics('');
+      setLyricsTransliteration('');
+      setYoutubeUrl('');
+      setShowAddForm(false);
+
+      await loadDashboard();
+
       Alert.alert(
-        'Access Denied',
-        'Administrator access is required.'
+        'Success',
+        'Your song has been published successfully!'
       );
-      return;
+    } catch (error) {
+      Alert.alert(
+        'Could Not Publish',
+        error instanceof Error ? error.message : 'Unable to publish song.'
+      );
+    } finally {
+      setSaving(false);
     }
-
-    const { error } = await supabase.from('songs').insert({
-      title: title.trim(),
-      language,
-      lyrics: lyrics.trim(),
-      youtube_url: youtubeUrl.trim() || null,
-      created_by: user.id,
-    });
-
-    setSaving(false);
-
-    if (error) {
-      Alert.alert('Could Not Publish', error.message);
-      return;
-    }
-
-    setTitle('');
-    setLanguage('te');
-    setLyrics('');
-    setYoutubeUrl('');
-    setShowAddForm(false);
-
-    await loadDashboard();
-
-    Alert.alert(
-      'Success',
-      'Your song has been published successfully!'
-    );
   }
 
   async function handleSignOut() {
@@ -383,10 +404,17 @@ export default function AdminScreen() {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.inputLabel}>Song Lyrics *</Text>
+              <Text style={styles.inputLabel}>
+                {language === 'te' ? 'Telugu Song Lyrics *' : 'Song Lyrics *'}
+              </Text>
+
               <TextInput
                 style={[styles.input, styles.lyricsInput]}
-                placeholder="Enter complete song lyrics..."
+                placeholder={
+                  language === 'te'
+                    ? 'ఇక్కడ పూర్తి పాట సాహిత్యాన్ని నమోదు చేయండి...'
+                    : 'Enter complete song lyrics...'
+                }
                 placeholderTextColor="#A49BAA"
                 value={lyrics}
                 onChangeText={setLyrics}
@@ -394,9 +422,35 @@ export default function AdminScreen() {
                 textAlignVertical="top"
               />
 
+              {language === 'te' && (
+                <>
+                  <Text style={styles.inputLabel}>
+                    English Transliteration *
+                  </Text>
+
+                  <Text style={styles.helperText}>
+                    Enter the same Telugu lyrics using English letters.
+                    Do not translate them into English.
+                  </Text>
+
+                  <TextInput
+                    style={[styles.input, styles.lyricsInput]}
+                    placeholder={
+                      'Enter Telugu lyrics in English letters...\n\nExample:\nNee prema chaalunu\nNee krupa chaalunu'
+                    }
+                    placeholderTextColor="#A49BAA"
+                    value={lyricsTransliteration}
+                    onChangeText={setLyricsTransliteration}
+                    multiline
+                    textAlignVertical="top"
+                  />
+                </>
+              )}
+
               <Text style={styles.inputLabel}>
                 YouTube Link (Optional)
               </Text>
+
               <TextInput
                 style={styles.input}
                 placeholder="https://youtube.com/..."
@@ -743,6 +797,12 @@ const styles = StyleSheet.create({
   lyricsInput: {
     minHeight: 150,
     textAlignVertical: 'top',
+  },
+  helperText: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 10,
   },
   languageRow: {
     flexDirection: 'row',
