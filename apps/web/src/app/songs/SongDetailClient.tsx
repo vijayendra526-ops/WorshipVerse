@@ -238,7 +238,7 @@ export default function SongDetailClient({ id }: Props) {
               <div className="rounded-2xl border border-[#EAE5DC] bg-white p-5 sm:p-7">
                 <div className="mb-5 flex items-center justify-between gap-2 border-b border-[#EAE5DC] pb-4">
                   <h3 className="font-bold text-[#32165C]">
-                    English Transliteration
+                    English lyrics
                   </h3>
 
                   <span className="rounded-full bg-[#D8B66C]/20 px-3 py-1 text-xs font-semibold text-[#8B6B35]">
