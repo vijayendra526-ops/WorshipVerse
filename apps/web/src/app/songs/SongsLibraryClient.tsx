@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -20,6 +20,15 @@ type Props = {
   search: string;
 };
 
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export default function SongsLibraryClient({
   language,
   search,
@@ -33,25 +42,53 @@ export default function SongsLibraryClient({
 
   const isTelugu = language === 'te';
 
+  // Prepare original and Telugu-converted search terms.
+  const searchCandidates = useMemo(() => {
+    const original = search.trim();
+
+    if (!original) return [];
+
+    const converted =
+      language === 'te'
+        ? toTeluguSearchQuery(original)
+        : original;
+
+    return [...new Set([original, converted])]
+      .map(normalizeSearchText)
+      .filter(Boolean);
+  }, [search, language]);
+
+  // Search song titles only.
+  // Exact matches appear before partial matches.
+  const filteredSongs = useMemo(() => {
+    if (searchCandidates.length === 0) {
+      return songs;
+    }
+
+    return songs
+      .map((song) => {
+        const title = normalizeSearchText(song.title);
+
+        const exactMatch = searchCandidates.some(
+          (candidate) => title === candidate
+        );
+
+        const partialMatch = searchCandidates.some(
+          (candidate) => title.includes(candidate)
+        );
+
+        return {
+          song,
+          score: exactMatch ? 2 : partialMatch ? 1 : 0,
+        };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.song);
+  }, [songs, searchCandidates]);
+
   useEffect(() => {
     let active = true;
-
-    // Convert Roman-letter Telugu into Telugu script.
-    // English searches remain unchanged.
-    const searchTerm =
-      language === 'te'
-        ? toTeluguSearchQuery(search.trim())
-        : search.trim();
-
-    function filterSongs(savedSongs: OfflineSong[]) {
-      const term = searchTerm.toLowerCase();
-
-      return savedSongs.filter(
-        (song) =>
-          song.language === language &&
-          song.title.toLowerCase().includes(term)
-      );
-    }
 
     async function loadSongs() {
       if (active) {
@@ -61,12 +98,16 @@ export default function SongsLibraryClient({
 
       let cachedSongs: OfflineSong[] = [];
 
-      // STEP 1: Load downloaded songs from IndexedDB first.
+      // STEP 1: Load offline songs first.
       try {
         cachedSongs = await getAllOfflineSongs();
 
         if (active) {
-          setSongs(filterSongs(cachedSongs));
+          setSongs(
+            cachedSongs.filter(
+              (song) => song.language === language
+            )
+          );
 
           if (cachedSongs.length > 0) {
             setLoading(false);
@@ -74,18 +115,24 @@ export default function SongsLibraryClient({
         }
       } catch {
         if (active && !navigator.onLine) {
-          setError('Unable to access offline songs on this device.');
+          setError(
+            'Unable to access offline songs on this device.'
+          );
         }
       }
 
       if (!active) return;
 
-      // STEP 2: Use downloaded songs when offline.
+      // STEP 2: Use cached songs when offline.
       if (!navigator.onLine) {
         setOnline(false);
         setLoading(false);
 
-        if (cachedSongs.length === 0) {
+        if (
+          !cachedSongs.some(
+            (song) => song.language === language
+          )
+        ) {
           setError(
             'No downloaded songs are available. Connect to the internet and download songs first.'
           );
@@ -94,7 +141,7 @@ export default function SongsLibraryClient({
         return;
       }
 
-      // STEP 3: Refresh songs from Supabase when online.
+      // STEP 3: Fetch the language library from Supabase.
       try {
         const supabase = createClient();
 
@@ -113,11 +160,10 @@ export default function SongsLibraryClient({
         const { data, error: fetchError } = await supabase
           .from('songs')
           .select(
-            'id, title, artist, language, lyrics, lyrics_transliteration, youtube_url, created_at'
+            'id, title, artist, language, lyrics, lyrics_transliteration, youtube_url'
           )
           .eq('language', language)
-          .order('created_at', { ascending: false })
-          .ilike('title', `%${searchTerm}%`);
+          .order('created_at', { ascending: false });
 
         if (fetchError) throw fetchError;
 
@@ -125,7 +171,7 @@ export default function SongsLibraryClient({
 
         const latestSongs = (data ?? []) as OfflineSong[];
 
-        // STEP 4: Save fetched songs without deleting other downloads.
+        // STEP 4: Cache songs without deleting other downloads.
         try {
           await saveSongs(latestSongs);
         } catch (storageError) {
@@ -147,7 +193,11 @@ export default function SongsLibraryClient({
 
         setOnline(false);
 
-        if (cachedSongs.length === 0) {
+        if (
+          !cachedSongs.some(
+            (song) => song.language === language
+          )
+        ) {
           setError(
             err instanceof Error
               ? err.message
@@ -186,7 +236,7 @@ export default function SongsLibraryClient({
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [language, search, router]);
+  }, [language, router]);
 
   return (
     <main className="min-h-screen bg-[#FAF8F4] text-[#24103F]">
@@ -230,7 +280,7 @@ export default function SongsLibraryClient({
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 rounded-full border border-[#D8B66C]/40 bg-white/5 px-4 py-2 text-sm text-[#E8D5A5]">
-                ✦ {songs.length} {isTelugu ? 'పాటలు' : 'Songs'}
+                ✦ {filteredSongs.length} {isTelugu ? 'పాటలు' : 'Songs'}
               </span>
 
               <span className="rounded-full border border-white/20 px-4 py-2 text-xs text-white">
@@ -299,9 +349,9 @@ export default function SongsLibraryClient({
           <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">
             {error}
           </div>
-        ) : songs.length > 0 ? (
+        ) : filteredSongs.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {songs.map((song) => (
+            {filteredSongs.map((song) => (
               <article
                 key={song.id}
                 className="group flex items-center justify-between gap-4 rounded-2xl border border-[#E8E0D2] bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[#D8B66C] hover:shadow-lg"

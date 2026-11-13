@@ -4,10 +4,9 @@
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import VoiceSearch from '@/components/VoiceSearch';
 
 export default function HomePage() {
-  const [language, setLanguage] = useState<'en' | 'te'>('en');
+  const [language, setLanguage] = useState<'en' | 'te'>('te');
   const [userEmail, setUserEmail] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -41,6 +40,10 @@ export default function HomePage() {
     }
 
     window.location.href = '/login';
+  }
+
+  function handleLanguageChange() {
+    setLanguage(isTelugu ? 'en' : 'te');
   }
 
   return (
@@ -148,7 +151,7 @@ export default function HomePage() {
             {/* Language switch */}
             <button
               type="button"
-              onClick={() => setLanguage(isTelugu ? 'en' : 'te')}
+              onClick={handleLanguageChange}
               className="rounded-full border border-[#D8B66C]/60 px-3 py-2 text-xs font-semibold text-[#D8B66C] transition hover:bg-white/10"
             >
               {isTelugu ? 'English' : 'తెలుగు'}
@@ -194,53 +197,6 @@ export default function HomePage() {
                 ? 'తెలుగు మరియు ఆంగ్ల క్రైస్తవ ఆరాధన గీతాలను ఒకే చోట కనుగొనండి.'
                 : 'Discover Telugu and English Christian worship songs, lyrics and praise in one place.'}
             </p>
-
-            
-{/* Search */}
-<form
-  action="/songs"
-  method="get"
-  className="mt-9 flex max-w-xl items-center gap-2 rounded-2xl border border-white/10 bg-white p-2 shadow-2xl transition focus-within:ring-2 focus-within:ring-[#D8B66C]/50"
->
-  <input
-    type="search"
-    name="q"
-    id="home-song-search"
-    placeholder={
-      isTelugu
-        ? 'పాట పేరు లేదా పదాలు వెతకండి...'
-        : 'Search songs, lyrics or artists...'
-    }
-    className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-[#24103F] outline-none placeholder:text-gray-400"
-  />
-
-  <input
-    type="hidden"
-    name="language"
-    value={language}
-  />
-
-  <VoiceSearch
-    language={language}
-    onTranscript={(transcript) => {
-      const searchInput = document.getElementById(
-        'home-song-search'
-      ) as HTMLInputElement | null;
-
-      if (searchInput) {
-        searchInput.value = transcript;
-      }
-    }}
-  />
-
-  <button
-    type="submit"
-    className="shrink-0 rounded-xl bg-[#D8B66C] px-5 py-3 text-xs font-bold text-[#24103F] transition hover:bg-[#E8CC8C] sm:px-7 sm:text-sm"
-  >
-    {isTelugu ? 'వెతకండి' : 'Search'}
-  </button>
-</form>
-
 
             <div className="mt-7 flex flex-wrap items-center gap-3 text-xs text-white/50">
               <span>♫ Telugu Worship</span>
@@ -399,7 +355,6 @@ export default function HomePage() {
               </div>
             </div>
           </a>
-
         </div>
       </section>
 

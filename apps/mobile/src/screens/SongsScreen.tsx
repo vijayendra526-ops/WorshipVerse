@@ -1,5 +1,11 @@
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
 import {
   View,
   Text,
@@ -44,7 +50,18 @@ type SongsScreenProps = {
   onBack: () => void;
 };
 
+// Normalize text for consistent title comparison.
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[^\w\u0C00-\u0C7F\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Convert Romanized Telugu into Telugu script.
+// This is a best-effort conversion, not a full phonetic search engine.
 function convertRomanizedTelugu(query: string): string {
   const input = query.trim().toLowerCase();
 
@@ -52,20 +69,37 @@ function convertRomanizedTelugu(query: string): string {
     return input;
   }
 
-  return Sanscript.t(
-    input,
-    'itrans_dravidian',
-    'telugu'
-  );
+  try {
+    return Sanscript.t(
+      input,
+      'itrans_dravidian',
+      'telugu'
+    );
+  } catch (error) {
+    console.error('Telugu transliteration error:', error);
+    return input;
+  }
 }
 
-// Normalize Telugu text so short and long vowel differences
-// do not prevent a search match.
-function normalizeTelugu(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[\u0C3E-\u0C4C\u0C55-\u0C56]/g, '')
-    .replace(/\s+/g, '');
+// Prepare original and converted search terms.
+function getSearchCandidates(
+  query: string,
+  language: Language
+): string[] {
+  const candidates = [
+    normalizeSearchText(query),
+  ];
+
+  if (
+    language === 'te' &&
+    /^[a-z\s]+$/i.test(query.trim())
+  ) {
+    const converted = convertRomanizedTelugu(query);
+
+    candidates.push(normalizeSearchText(converted));
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
 }
 
 export default function SongsScreen({
@@ -80,7 +114,8 @@ export default function SongsScreen({
   const [search, setSearch] = useState(initialSearch);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+  const [selectedSong, setSelectedSong] =
+    useState<Song | null>(null);
   const [isListening, setIsListening] = useState(false);
 
   // Prevent an older language request from overwriting newer results.
@@ -199,42 +234,40 @@ export default function SongsScreen({
     setIsListening(false);
   };
 
-  // FILTER SONGS
-  const filteredSongs = songs.filter((song) => {
-    const query = search.trim().toLowerCase();
+  // PREPARE SEARCH TERMS
+  const searchCandidates = useMemo(
+    () => getSearchCandidates(search, activeLanguage),
+    [search, activeLanguage]
+  );
 
-    if (!query) return true;
-
-    const title = song.title?.toLowerCase() ?? '';
-    const artist = song.artist?.toLowerCase() ?? '';
-
-    // Direct English or Telugu search.
-    if (
-      title.includes(query) ||
-      artist.includes(query)
-    ) {
-      return true;
+  // TITLE-ONLY SEARCH
+  // Exact title matches appear before partial title matches.
+  const filteredSongs = useMemo(() => {
+    if (searchCandidates.length === 0) {
+      return songs;
     }
 
-    // Romanized Telugu search.
-    if (
-      activeLanguage === 'te' &&
-      /^[a-z\s]+$/i.test(query)
-    ) {
-      const convertedQuery = convertRomanizedTelugu(query);
-      const normalizedQuery = normalizeTelugu(convertedQuery);
+    return songs
+      .map((song) => {
+        const title = normalizeSearchText(song.title ?? '');
 
-      const normalizedTitle = normalizeTelugu(title);
-      const normalizedArtist = normalizeTelugu(artist);
+        const exactMatch = searchCandidates.some(
+          (candidate) => title === candidate
+        );
 
-      return (
-        normalizedTitle.includes(normalizedQuery) ||
-        normalizedArtist.includes(normalizedQuery)
-      );
-    }
+        const partialMatch = searchCandidates.some(
+          (candidate) => title.includes(candidate)
+        );
 
-    return false;
-  });
+        return {
+          song,
+          score: exactMatch ? 2 : partialMatch ? 1 : 0,
+        };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.song);
+  }, [songs, searchCandidates]);
 
   // OPEN SONG DETAILS
   if (selectedSong) {
@@ -344,8 +377,8 @@ export default function SongsScreen({
             style={styles.searchInput}
             placeholder={
               activeLanguage === 'te'
-                ? 'పాట పేరు లేదా గాయకుడి పేరు వెతకండి'
-                : 'Search songs or artists...'
+                ? 'పాట పేరు వెతకండి...'
+                : 'Search songs by title...'
             }
             placeholderTextColor="#999"
             value={search}
@@ -432,7 +465,7 @@ export default function SongsScreen({
 
               <Text style={styles.emptyDescription}>
                 {search.trim()
-                  ? 'Try searching with another name.'
+                  ? 'Try searching with another song title.'
                   : 'Songs will appear here when they are available.'}
               </Text>
             </View>

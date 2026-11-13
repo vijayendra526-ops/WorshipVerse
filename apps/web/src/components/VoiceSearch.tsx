@@ -48,7 +48,11 @@ export default function VoiceSearch({
 }: Props) {
   const [listening, setListening] = useState(false);
   const [message, setMessage] = useState('');
+
   const recognitionRef = useRef<RecognitionInstance | null>(null);
+  const transcriptRef = useRef('');
+  const submittedRef = useRef(false);
+  const errorRef = useRef('');
 
   useEffect(() => {
     return () => {
@@ -73,7 +77,7 @@ export default function VoiceSearch({
 
     if (!SpeechRecognition) {
       setMessage(
-        'Voice search is not supported in this browser. Try Google Chrome.'
+        'Voice search is not supported in this browser. Please try Google Chrome.'
       );
       return;
     }
@@ -81,9 +85,13 @@ export default function VoiceSearch({
     try {
       const recognition = new SpeechRecognition();
 
+      transcriptRef.current = '';
+      submittedRef.current = false;
+      errorRef.current = '';
+
       recognition.lang = language === 'te' ? 'te-IN' : 'en-IN';
       recognition.interimResults = true;
-      recognition.continuous = true;
+      recognition.continuous = false;
 
       recognition.onstart = () => {
         setListening(true);
@@ -95,34 +103,59 @@ export default function VoiceSearch({
       };
 
       recognition.onresult = (event) => {
-        let transcript = '';
+        const finalParts: string[] = [];
+        const interimParts: string[] = [];
 
         for (let i = 0; i < event.results.length; i++) {
-          transcript += event.results[i][0]?.transcript || '';
+          const result = event.results[i];
+          const text = result[0]?.transcript?.trim();
+
+          if (!text) continue;
+
+          if (result.isFinal) {
+            finalParts.push(text);
+          } else {
+            interimParts.push(text);
+          }
         }
 
-        const cleanedTranscript = transcript.trim();
+        const finalTranscript = finalParts.join(' ').trim();
+        const interimTranscript = interimParts.join(' ').trim();
 
-        if (cleanedTranscript) {
-          const lastResult = event.results[event.results.length - 1];
-          const isFinal = Boolean(lastResult?.isFinal);
+        const displayTranscript = [
+          finalTranscript,
+          interimTranscript,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
 
-          onTranscript(cleanedTranscript, isFinal);
+        if (!displayTranscript) return;
 
-          setMessage(
-            isFinal
-              ? language === 'te'
-                ? 'పాట కోసం వెతుకుతున్నాను...'
-                : 'Searching for songs...'
-              : language === 'te'
-                ? 'మీ మాటలను గుర్తిస్తున్నాను...'
-                : 'Recognizing your words...'
-          );
+        transcriptRef.current = displayTranscript;
+
+        const isFinal =
+          finalParts.length > 0 && interimParts.length === 0;
+
+        onTranscript(displayTranscript, isFinal);
+
+        setMessage(
+          isFinal
+            ? language === 'te'
+              ? 'పాట కోసం వెతుకుతున్నాను...'
+              : 'Searching for songs...'
+            : language === 'te'
+              ? 'మీ మాటలను గుర్తిస్తున్నాను...'
+              : 'Recognizing your words...'
+        );
+
+        if (isFinal) {
+          submittedRef.current = true;
         }
       };
 
       recognition.onerror = (event) => {
-        setListening(false);
+        errorRef.current = event.error;
 
         const messages: Record<string, string> = {
           'not-allowed':
@@ -136,7 +169,7 @@ export default function VoiceSearch({
           'audio-capture':
             'No microphone detected. Check your microphone settings.',
           'language-not-supported':
-            'This language is not supported on this device.',
+            'Telugu or English recognition is not supported by this device.',
           aborted: 'Voice search was stopped.',
         };
 
@@ -149,6 +182,30 @@ export default function VoiceSearch({
       recognition.onend = () => {
         setListening(false);
         recognitionRef.current = null;
+
+        const finalTranscript = transcriptRef.current.trim();
+
+        // Submit the last recognized words if the browser ended
+        // recognition before sending a final result event.
+        if (finalTranscript && !submittedRef.current) {
+          submittedRef.current = true;
+          onTranscript(finalTranscript, true);
+
+          setMessage(
+            language === 'te'
+              ? 'పాట కోసం వెతుకుతున్నాను...'
+              : 'Searching for songs...'
+          );
+          return;
+        }
+
+        if (!finalTranscript && !errorRef.current) {
+          setMessage(
+            language === 'te'
+              ? 'మాటలు గుర్తించబడలేదు. మళ్లీ ప్రయత్నించండి.'
+              : 'No speech detected. Please try again.'
+          );
+        }
       };
 
       recognitionRef.current = recognition;
@@ -161,26 +218,57 @@ export default function VoiceSearch({
   }
 
   function stopVoiceSearch() {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setListening(false);
+    if (!recognitionRef.current) return;
+
+    setMessage(
+      language === 'te'
+        ? 'విన్న మాటలను పూర్తి చేస్తున్నాను...'
+        : 'Finishing your voice search...'
+    );
+
+    recognitionRef.current.stop();
   }
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-center gap-2">
       <button
         type="button"
         onClick={listening ? stopVoiceSearch : startVoiceSearch}
         aria-label={listening ? 'Stop voice search' : 'Start voice search'}
         aria-pressed={listening}
-        className={`shrink-0 rounded-xl border px-4 py-3 font-semibold transition ${
+        className={`relative flex h-12 min-w-14 items-center justify-center gap-2 rounded-xl border px-4 font-semibold transition ${
           listening
-            ? 'border-red-600 bg-red-600 text-white'
+            ? 'border-red-600 bg-red-600 text-white shadow-lg shadow-red-200'
             : 'border-[#D8B66C] bg-white text-[#32165C] hover:bg-[#FAF8F4]'
         }`}
       >
-        {listening ? '■ Stop' : '🎙'}
+        {listening && (
+          <span className="absolute inset-0 animate-ping rounded-xl border-2 border-red-400 opacity-30" />
+        )}
+
+        <span className="relative text-xl">
+          {listening ? '■' : '🎙'}
+        </span>
+
+        <span className="relative">
+          {listening ? 'Stop' : 'Voice'}
+        </span>
       </button>
+
+      {listening && (
+        <div className="flex items-center gap-1" aria-hidden="true">
+          {[1, 2, 3, 4, 5].map((bar) => (
+            <span
+              key={bar}
+              className="h-3 w-1 animate-pulse rounded-full bg-[#9B7A3C]"
+              style={{
+                animationDelay: `${bar * 100}ms`,
+                height: `${10 + (bar % 3) * 5}px`,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {message && (
         <p

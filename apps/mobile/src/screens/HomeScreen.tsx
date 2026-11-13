@@ -7,19 +7,13 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Alert,
   ActivityIndicator,
   Modal,
-  Keyboard,
 } from 'react-native';
 
 import { supabase } from '../lib/supabase';
 import SongsScreen from './SongsScreen';
-import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from 'expo-speech-recognition';
 import ProfileScreen from './ProfileScreen';
 import FavouritesScreen from './FavouritesScreen';
 import PlaylistsScreen from './PlaylistsScreen';
@@ -29,15 +23,11 @@ type Language = 'en' | 'te';
 
 export default function HomeScreen() {
   const [language, setLanguage] = useState<Language>('en');
-  const [search, setSearch] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedSongLanguage, setSelectedSongLanguage] =
     useState<Language | null>(null);
-  const [initialSearch, setInitialSearch] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const [voiceMessage, setVoiceMessage] = useState('');
   const [showProfile, setShowProfile] = useState(false);
   const [showFavourites, setShowFavourites] = useState(false);
   const [showPlaylists, setShowPlaylists] = useState(false);
@@ -59,50 +49,17 @@ export default function HomeScreen() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  useSpeechRecognitionEvent('start', () => {
-    setIsListening(true);
-    setVoiceMessage(isTe ? 'వింటున్నాను...' : 'Listening...');
-  });
-
-  useSpeechRecognitionEvent('result', (event) => {
-    const transcript = event.results[0]?.transcript?.trim() ?? '';
-
-    if (transcript) {
-      setSearch(transcript);
-      setVoiceMessage(
-        isTe ? 'గుర్తించబడింది!' : 'Voice recognized!'
-      );
-    }
-  });
-
-  useSpeechRecognitionEvent('error', (event) => {
-    setIsListening(false);
-    setVoiceMessage(
-      event.message || event.error || 'Voice search failed.'
-    );
-  });
-
-  useSpeechRecognitionEvent('end', () => {
-    setIsListening(false);
-  });
-
   if (selectedSongLanguage) {
     return (
       <SongsScreen
         language={selectedSongLanguage}
-        initialSearch={initialSearch}
-        onBack={() => {
-          setSelectedSongLanguage(null);
-          setInitialSearch('');
-        }}
+        onBack={() => setSelectedSongLanguage(null)}
       />
     );
   }
 
   if (showProfile) {
-    return (
-      <ProfileScreen onBack={() => setShowProfile(false)} />
-    );
+    return <ProfileScreen onBack={() => setShowProfile(false)} />;
   }
 
   if (showFavourites) {
@@ -111,7 +68,6 @@ export default function HomeScreen() {
         onBack={() => setShowFavourites(false)}
         onBrowseSongs={() => {
           setShowFavourites(false);
-          setInitialSearch('');
           setSelectedSongLanguage('en');
         }}
       />
@@ -119,19 +75,11 @@ export default function HomeScreen() {
   }
 
   if (showPlaylists) {
-    return (
-      <PlaylistsScreen
-        onBack={() => setShowPlaylists(false)}
-      />
-    );
+    return <PlaylistsScreen onBack={() => setShowPlaylists(false)} />;
   }
 
   if (showSettings) {
-    return (
-      <SettingsScreen
-        onBack={() => setShowSettings(false)}
-      />
-    );
+    return <SettingsScreen onBack={() => setShowSettings(false)} />;
   }
 
   async function handleSignOut() {
@@ -149,57 +97,7 @@ export default function HomeScreen() {
     setProfileOpen(false);
   }
 
-  function handleSearch() {
-    if (!search.trim()) {
-      Alert.alert(
-        isTe ? 'శోధన' : 'Search',
-        isTe ? 'పాట పేరు నమోదు చేయండి.' : 'Please enter a song name.'
-      );
-      return;
-    }
-
-    Keyboard.dismiss();
-    setInitialSearch(search.trim());
-    setSelectedSongLanguage(language);
-  }
-
-  async function startVoiceSearch() {
-    try {
-      setVoiceMessage('');
-
-      const permission =
-        await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-
-      if (!permission.granted) {
-        setVoiceMessage(
-          isTe
-            ? 'మైక్రోఫోన్ అనుమతి అవసరం.'
-            : 'Microphone permission is required.'
-        );
-        return;
-      }
-
-      Keyboard.dismiss();
-
-      ExpoSpeechRecognitionModule.start({
-        lang: isTe ? 'te-IN' : 'en-IN',
-        interimResults: true,
-        continuous: false,
-      });
-    } catch (error) {
-      console.error('Voice search error:', error);
-      setIsListening(false);
-      setVoiceMessage(
-        isTe
-          ? 'వాయిస్ శోధన ప్రారంభించలేకపోయాము.'
-          : 'Unable to start voice search.'
-      );
-    }
-  }
-
   function openLanguage(selectedLanguage: Language) {
-    setInitialSearch('');
-    setSearch('');
     setSelectedSongLanguage(selectedLanguage);
   }
 
@@ -208,9 +106,8 @@ export default function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
       >
-        {/* WEBSITE HEADER */}
+        {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
             <View style={styles.brand}>
@@ -268,9 +165,7 @@ export default function HomeScreen() {
           </View>
 
           <Text style={styles.heroTitle}>
-            {isTe
-              ? 'ప్రతి పాట ఒక ప్రార్థన.'
-              : 'Let your heart'}
+            {isTe ? 'ప్రతి పాట ఒక ప్రార్థన.' : 'Let your heart'}
           </Text>
 
           <Text style={styles.heroHighlight}>
@@ -283,54 +178,7 @@ export default function HomeScreen() {
               : 'Discover Telugu and English Christian worship songs, lyrics and praise in one place.'}
           </Text>
 
-          {/* SEARCH */}
-          <View style={styles.searchContainer}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder={
-                isTe
-                  ? 'పాట పేరు లేదా పదాలు వెతకండి...'
-                  : 'Search songs, lyrics or artists...'
-              }
-              placeholderTextColor="#93899D"
-              value={search}
-              onChangeText={setSearch}
-              returnKeyType="search"
-              onSubmitEditing={handleSearch}
-            />
-
-            <TouchableOpacity
-              style={[
-                styles.voiceButton,
-                isListening && styles.voiceButtonActive,
-              ]}
-              onPress={() => {
-                if (isListening) {
-                  ExpoSpeechRecognitionModule.stop();
-                } else {
-                  startVoiceSearch();
-                }
-              }}
-            >
-              <Text style={styles.voiceButtonText}>
-                {isListening ? '■' : '🎙'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.searchButton}
-              onPress={handleSearch}
-            >
-              <Text style={styles.searchButtonText}>
-                {isTe ? 'వెతకండి' : 'Search'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {!!voiceMessage && (
-            <Text style={styles.voiceMessage}>{voiceMessage}</Text>
-          )}
-
+          {/* HERO TAGS */}
           <View style={styles.heroTags}>
             <Text style={styles.heroTag}>♫ Telugu Worship</Text>
             <Text style={styles.tagDot}>•</Text>
@@ -339,7 +187,7 @@ export default function HomeScreen() {
             <Text style={styles.heroTag}>✦ Praise Together</Text>
           </View>
 
-          {/* WEBSITE HERO VISUAL PANEL */}
+          {/* HERO VISUAL */}
           <View style={styles.visualOuter}>
             <View style={styles.visualPanel}>
               <View style={styles.visualCircle}>
@@ -718,54 +566,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 22,
     marginTop: 16,
-  },
-  searchContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 5,
-    marginTop: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    color: '#24103F',
-    fontSize: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 12,
-  },
-  searchButton: {
-    backgroundColor: '#D8B66C',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 13,
-  },
-  searchButtonText: {
-    color: '#24103F',
-    fontWeight: '800',
-    fontSize: 11,
-  },
-  voiceButton: {
-    width: 38,
-    height: 40,
-    backgroundColor: '#32165C',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 5,
-  },
-  voiceButtonActive: {
-    backgroundColor: '#B42318',
-  },
-  voiceButtonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-  },
-  voiceMessage: {
-    color: '#D8B66C',
-    fontSize: 11,
-    marginTop: 9,
   },
   heroTags: {
     flexDirection: 'row',
