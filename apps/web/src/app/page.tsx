@@ -376,17 +376,25 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-[#1B0D2D] px-5 py-9 text-center text-sm text-white/50">
-        <p className="font-semibold text-white">WorshipVerse</p>
+<footer className="bg-[#1B0D2D] px-5 py-9 text-center text-sm text-white/50">
+  <p className="font-semibold text-white">WorshipVerse</p>
 
-        <p className="mt-2 text-xs text-[#D8B66C]">
-          Every Song, A Prayer. Every Verse, A Praise.
-        </p>
+  <p className="mt-2 text-xs text-[#D8B66C]">
+    Every Song, A Prayer. Every Verse, A Praise.
+  </p>
 
-        <p className="mt-5 text-xs">
-          © 2026 WorshipVerse · SHARON A.G. CHURCH
-        </p>
-      </footer>
+  <a
+  href="/download"
+  className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#D8B66C]/60 px-5 py-3 text-xs font-semibold tracking-wider text-[#D8B66C] transition hover:bg-[#D8B66C] hover:text-[#24103F]"
+>
+    <span>⬇</span>
+    {isTelugu ? 'Android కోసం డౌన్‌లోడ్ చేయండి' : 'Download for Android'}
+  </a>
+
+  <p className="mt-5 text-xs">
+    © 2026 WorshipVerse · SHARON A.G. CHURCH
+  </p>
+</footer>
     </main>
   );
 }
