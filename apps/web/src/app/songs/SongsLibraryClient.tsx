@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+
 import { createClient } from '@/lib/supabase/client';
 import {
   getAllOfflineSongs,
@@ -33,7 +33,7 @@ export default function SongsLibraryClient({
   language,
   search,
 }: Props) {
-  const router = useRouter();
+  
 
   const [songs, setSongs] = useState<OfflineSong[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,19 +144,6 @@ export default function SongsLibraryClient({
       // STEP 3: Fetch the language library from Supabase.
       try {
         const supabase = createClient();
-
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError) throw sessionError;
-
-        if (!session) {
-          router.replace('/login');
-          return;
-        }
-
         const { data, error: fetchError } = await supabase
           .from('songs')
           .select(
@@ -236,7 +223,7 @@ export default function SongsLibraryClient({
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [language, router]);
+  }, [language]);
 
   return (
     <main className="min-h-screen bg-[#FAF8F4] text-[#24103F]">

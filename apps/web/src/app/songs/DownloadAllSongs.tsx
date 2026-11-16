@@ -18,16 +18,6 @@ export default function DownloadAllSongs() {
 
     try {
       const supabase = createClient();
-
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        throw new Error('Please sign in to download songs.');
-      }
-
       const allSongs: OfflineSong[] = [];
       const pageSize = 500;
       let offset = 0;

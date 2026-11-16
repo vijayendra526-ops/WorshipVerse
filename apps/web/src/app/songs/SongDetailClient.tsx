@@ -2,8 +2,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+
 import { createClient } from '@/lib/supabase/client';
 import {
   getOfflineSong,
@@ -16,8 +16,14 @@ type Props = {
   id: string;
 };
 
+const DEFAULT_FONT_SIZE = 20;
+const MIN_FONT_SIZE = 14;
+const MAX_FONT_SIZE = 34;
+const FONT_SIZE_STEP = 2;
+const FONT_STORAGE_KEY = 'worshipverse-lyrics-font-size';
+
 export default function SongDetailClient({ id }: Props) {
-  const router = useRouter();
+  
 
   const [song, setSong] = useState<OfflineSong | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +31,93 @@ export default function SongDetailClient({ id }: Props) {
   const [error, setError] = useState('');
 
   const [lyricsView, setLyricsView] = useState<'te' | 'en'>('te');
+
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
+  const [fontControlsOpen, setFontControlsOpen] = useState(false);
+  const [fontPreferenceLoaded, setFontPreferenceLoaded] = useState(false);
+
+  const fontControlsRef = useRef<HTMLDivElement>(null);
+
+  // Load the saved lyrics font size.
+  useEffect(() => {
+    try {
+      const savedSize = localStorage.getItem(FONT_STORAGE_KEY);
+
+      if (savedSize) {
+        const parsedSize = Number(savedSize);
+
+        if (Number.isFinite(parsedSize)) {
+          setFontSize(
+            Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, parsedSize))
+          );
+        }
+      }
+    } catch (error) {
+      console.warn('Unable to load lyrics font preference:', error);
+    } finally {
+      setFontPreferenceLoaded(true);
+    }
+  }, []);
+
+  // Save the font size whenever the member changes it.
+  useEffect(() => {
+    if (!fontPreferenceLoaded) return;
+
+    try {
+      localStorage.setItem(FONT_STORAGE_KEY, String(fontSize));
+    } catch (error) {
+      console.warn('Unable to save lyrics font preference:', error);
+    }
+  }, [fontSize, fontPreferenceLoaded]);
+
+  // Close font controls when clicking outside or pressing Escape.
+  useEffect(() => {
+    if (!fontControlsOpen) return;
+
+    const handleOutsideClick = (event: PointerEvent) => {
+      if (
+        fontControlsRef.current &&
+        !fontControlsRef.current.contains(event.target as Node)
+      ) {
+        setFontControlsOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setFontControlsOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [fontControlsOpen]);
+
+  const increaseFontSize = () => {
+    setFontSize((current) =>
+      Math.min(MAX_FONT_SIZE, current + FONT_SIZE_STEP)
+    );
+  };
+
+  const decreaseFontSize = () => {
+    setFontSize((current) =>
+      Math.max(MIN_FONT_SIZE, current - FONT_SIZE_STEP)
+    );
+  };
+
+  const resetFontSize = () => {
+    setFontSize(DEFAULT_FONT_SIZE);
+  };
+
+  const lyricsStyle = {
+    fontSize: `${fontSize}px`,
+    lineHeight: `${Math.round(fontSize * 1.8)}px`,
+  };
 
   useEffect(() => {
     let active = true;
@@ -70,19 +163,6 @@ export default function SongDetailClient({ id }: Props) {
       // STEP 3: Refresh from Supabase when online.
       try {
         const supabase = createClient();
-
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession();
-
-        if (sessionError) throw sessionError;
-
-        if (!session) {
-          router.replace('/login');
-          return;
-        }
-
         const { data, error: fetchError } = await supabase
           .from('songs')
           .select(
@@ -159,7 +239,7 @@ export default function SongDetailClient({ id }: Props) {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [id, router]);
+  }, [id]); 
 
   if (loading) {
     return (
@@ -264,12 +344,74 @@ export default function SongDetailClient({ id }: Props) {
 
         {/* Lyrics Section */}
         <div className="flex-1 py-9 sm:py-12">
-          <div className="mb-7 flex items-center gap-3">
-            <span className="h-px w-8 bg-[#D8B66C]" />
+          <div className="mb-7 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="h-px w-8 bg-[#D8B66C]" />
 
-            <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-[#9B7A3C]">
-              {isTelugu ? 'పాట సాహిత్యం' : 'Song Lyrics'}
-            </h2>
+              <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-[#9B7A3C]">
+                {isTelugu ? 'పాట సాహిత్యం' : 'Song Lyrics'}
+              </h2>
+            </div>
+
+            {/* Hidden Font Size Controls */}
+            <div ref={fontControlsRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setFontControlsOpen((open) => !open)}
+                aria-label="Lyrics text settings"
+                aria-expanded={fontControlsOpen}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E8E0D2] bg-[#FAF8F4] text-sm font-bold text-[#32165C] transition hover:border-[#D8B66C] hover:bg-[#F2EBDD]"
+              >
+                Aa
+              </button>
+
+              {fontControlsOpen && (
+                <div className="absolute right-0 top-12 z-40 flex items-center gap-2 rounded-2xl border border-[#E8E0D2] bg-white p-3 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={decreaseFontSize}
+                    disabled={fontSize <= MIN_FONT_SIZE}
+                    aria-label="Decrease lyrics font size"
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E8E0D2] text-lg font-bold text-[#32165C] transition hover:bg-[#FAF8F4] disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    A−
+                  </button>
+
+                  <span className="min-w-10 text-center text-xs font-semibold text-gray-500">
+                    {fontSize}px
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={increaseFontSize}
+                    disabled={fontSize >= MAX_FONT_SIZE}
+                    aria-label="Increase lyrics font size"
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E8E0D2] text-lg font-bold text-[#32165C] transition hover:bg-[#FAF8F4] disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    A+
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={resetFontSize}
+                    aria-label="Reset lyrics font size"
+                    title="Reset font size"
+                    className="ml-1 rounded-lg px-2 py-2 text-xs font-semibold text-[#9B7A3C] transition hover:bg-[#FAF8F4]"
+                  >
+                    Reset
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFontControlsOpen(false)}
+                    aria-label="Close font settings"
+                    className="rounded-lg px-2 py-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {isTelugu ? (
@@ -308,12 +450,17 @@ export default function SongDetailClient({ id }: Props) {
               {/* Selected Lyrics */}
               <div className="mx-auto max-w-3xl rounded-2xl border border-[#EAE5DC] bg-[#FAF8F4] p-6 sm:p-10">
                 {lyricsView === 'te' ? (
-                  <p className="whitespace-pre-wrap break-words text-lg leading-9 text-[#333333] sm:text-xl sm:leading-[2.5rem]">
-                    {song.lyrics ||
-                      'సాహిత్యం అందుబాటులో లేదు.'}
+                  <p
+                    style={lyricsStyle}
+                    className="whitespace-pre-wrap break-words text-[#333333]"
+                  >
+                    {song.lyrics || 'సాహిత్యం అందుబాటులో లేదు.'}
                   </p>
                 ) : (
-                  <p className="whitespace-pre-wrap break-words text-lg leading-9 text-[#333333] sm:text-xl sm:leading-[2.5rem]">
+                  <p
+                    style={lyricsStyle}
+                    className="whitespace-pre-wrap break-words text-[#333333]"
+                  >
                     {transliteration ||
                       'English lyrics are not available yet.'}
                   </p>
@@ -321,7 +468,10 @@ export default function SongDetailClient({ id }: Props) {
               </div>
             </div>
           ) : (
-            <p className="whitespace-pre-wrap break-words text-lg leading-9 text-[#333333] sm:text-xl sm:leading-[2.5rem]">
+            <p
+              style={lyricsStyle}
+              className="whitespace-pre-wrap break-words text-[#333333]"
+            >
               {song.lyrics || 'Lyrics are not available yet.'}
             </p>
           )}
