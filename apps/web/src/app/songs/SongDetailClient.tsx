@@ -22,9 +22,85 @@ const MAX_FONT_SIZE = 34;
 const FONT_SIZE_STEP = 2;
 const FONT_STORAGE_KEY = 'worshipverse-lyrics-font-size';
 
-export default function SongDetailClient({ id }: Props) {
-  
+const YOUTUBE_HOSTS = [
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'youtu.be',
+  'www.youtu.be',
+  'youtube-nocookie.com',
+  'www.youtube-nocookie.com',
+];
 
+// Accept only recognised YouTube URLs and valid 11-character video IDs.
+function getYouTubeVideoId(value?: string | null): string | null {
+  if (!value?.trim()) return null;
+
+  const trimmed = value.trim();
+
+  // Also support a video ID entered on its own.
+  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  try {
+    const url = new URL(
+      /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+    );
+
+    if (!YOUTUBE_HOSTS.includes(url.hostname.toLowerCase())) {
+      return null;
+    }
+
+    let videoId: string | null = null;
+
+    if (url.hostname.toLowerCase().includes('youtu.be')) {
+      videoId = url.pathname.split('/').filter(Boolean)[0] || null;
+    } else {
+      videoId =
+        url.searchParams.get('v') ||
+        url.pathname.match(/\/(?:embed|shorts|live)\/([^/?]+)/)?.[1] ||
+        null;
+    }
+
+    return videoId && /^[A-Za-z0-9_-]{11}$/.test(videoId)
+      ? videoId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+// Return a safe YouTube URL for the fallback link.
+function getSafeYouTubeUrl(value?: string | null): string | null {
+  if (!value?.trim()) return null;
+
+  const trimmed = value.trim();
+
+  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) {
+    return `https://www.youtube.com/watch?v=${trimmed}`;
+  }
+
+  try {
+    const url = new URL(
+      /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+    );
+
+    if (!YOUTUBE_HOSTS.includes(url.hostname.toLowerCase())) {
+      return null;
+    }
+
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      return null;
+    }
+
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export default function SongDetailClient({ id }: Props) {
   const [song, setSong] = useState<OfflineSong | null>(null);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -59,7 +135,7 @@ export default function SongDetailClient({ id }: Props) {
     }
   }, []);
 
-  // Save the font size whenever the member changes it.
+  // Save the font size whenever it changes.
   useEffect(() => {
     if (!fontPreferenceLoaded) return;
 
@@ -119,6 +195,7 @@ export default function SongDetailClient({ id }: Props) {
     lineHeight: `${Math.round(fontSize * 1.8)}px`,
   };
 
+  // Load the song from offline storage first, then refresh from Supabase.
   useEffect(() => {
     let active = true;
 
@@ -128,7 +205,6 @@ export default function SongDetailClient({ id }: Props) {
 
       let cachedSong: OfflineSong | null = null;
 
-      // STEP 1: Check local storage first.
       try {
         cachedSong = await getOfflineSong(id);
 
@@ -143,26 +219,20 @@ export default function SongDetailClient({ id }: Props) {
 
       if (!active) return;
 
-      // STEP 2: If offline, use the downloaded song.
       if (!navigator.onLine) {
-        if (active) {
-          setOffline(true);
+        setOffline(true);
 
-          if (!cachedSong) {
-            setError(
-              'This song has not been downloaded for offline use.'
-            );
-          }
-
-          setLoading(false);
+        if (!cachedSong) {
+          setError('This song has not been downloaded for offline use.');
         }
 
+        setLoading(false);
         return;
       }
 
-      // STEP 3: Refresh from Supabase when online.
       try {
         const supabase = createClient();
+
         const { data, error: fetchError } = await supabase
           .from('songs')
           .select(
@@ -172,12 +242,10 @@ export default function SongDetailClient({ id }: Props) {
           .single();
 
         if (fetchError) throw fetchError;
-
         if (!active) return;
 
         const latestSong = data as OfflineSong;
 
-        // STEP 4: Save the latest song locally.
         try {
           await saveSong(latestSong);
         } catch (storageError) {
@@ -197,16 +265,13 @@ export default function SongDetailClient({ id }: Props) {
 
         console.warn('Unable to refresh song:', err);
 
-        // STEP 5: Fall back to the previously downloaded song.
         if (cachedSong) {
           setSong(cachedSong);
           setOffline(true);
           setError('');
         } else {
           setError(
-            err instanceof Error
-              ? err.message
-              : 'Unable to load this song.'
+            err instanceof Error ? err.message : 'Unable to load this song.'
           );
         }
       } finally {
@@ -219,9 +284,7 @@ export default function SongDetailClient({ id }: Props) {
     void loadSong();
 
     const handleOnline = () => {
-      if (active) {
-        void loadSong();
-      }
+      if (active) void loadSong();
     };
 
     const handleOffline = () => {
@@ -239,42 +302,58 @@ export default function SongDetailClient({ id }: Props) {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [id]); 
+  }, [id]);
+
+  const pageBackground = {
+    backgroundImage:
+      "linear-gradient(rgba(36, 16, 63, 0.78), rgba(36, 16, 63, 0.88)), url('/images/worship-background.jpg')",
+  };
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-white">
-        <p className="text-sm text-gray-500">
-          Loading song...
-        </p>
+      <main
+        className="flex min-h-screen items-center justify-center bg-[#24103F] bg-cover bg-center px-5"
+        style={pageBackground}
+      >
+        <div className="rounded-2xl border border-white/15 bg-white/10 px-8 py-6 text-center text-white shadow-xl backdrop-blur-md">
+          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-[#D8B66C]" />
+          <p className="text-sm font-medium">Loading song...</p>
+        </div>
       </main>
     );
   }
 
   if (!song) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-white px-5 text-center">
-        <h1 className="text-2xl font-bold text-[#32165C]">
-          Song unavailable
-        </h1>
+      <main
+        className="flex min-h-screen flex-col items-center justify-center bg-[#24103F] bg-cover bg-center px-5 text-center"
+        style={pageBackground}
+      >
+        <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white/10 p-8 text-white shadow-xl backdrop-blur-md">
+          <div className="mb-4 text-4xl text-[#D8B66C]">♪</div>
 
-        <p className="mt-3 text-sm text-gray-500">
-          {error || 'This song could not be loaded.'}
-        </p>
+          <h1 className="text-2xl font-bold">Song unavailable</h1>
 
-        <Link
-          href="/offline"
-          className="mt-6 rounded-xl bg-[#32165C] px-5 py-3 text-sm font-semibold text-white"
-        >
-          Open Offline Library
-        </Link>
+          <p className="mt-3 text-sm leading-6 text-white/75">
+            {error || 'This song could not be loaded.'}
+          </p>
 
-        <Link
-          href="/songs"
-          className="mt-4 text-sm font-medium text-[#32165C]"
-        >
-          Back to Songs
-        </Link>
+          <Link
+            href="/offline"
+            className="mt-6 inline-flex rounded-xl bg-[#D8B66C] px-5 py-3 text-sm font-bold text-[#24103F] transition hover:bg-[#E8CD91]"
+          >
+            Open Offline Library
+          </Link>
+
+          <div>
+            <Link
+              href="/songs"
+              className="mt-5 inline-block text-sm font-medium text-white/80 transition hover:text-[#D8B66C]"
+            >
+              ← Back to Songs
+            </Link>
+          </div>
+        </div>
       </main>
     );
   }
@@ -282,22 +361,28 @@ export default function SongDetailClient({ id }: Props) {
   const isTelugu = song.language === 'te';
   const transliteration = song.lyrics_transliteration?.trim();
 
+  const youtubeVideoId = getYouTubeVideoId(song.youtube_url);
+  const safeYouTubeUrl = getSafeYouTubeUrl(song.youtube_url);
+
   return (
-    <main className="min-h-screen bg-white text-[#333333]">
+    <main
+      className="min-h-screen bg-[#24103F] bg-fixed bg-cover bg-center bg-no-repeat text-[#24103F]"
+      style={pageBackground}
+    >
       {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-[#EAE5DC] bg-white/95 px-4 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
+      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#24103F]/85 px-4 py-3 text-white shadow-lg backdrop-blur-xl">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <Link
             href={`/songs?language=${song.language}`}
-            className="flex items-center gap-2 text-sm font-medium text-[#32165C] transition hover:text-[#9B7A3C]"
+            className="flex items-center gap-2 text-sm font-medium text-white/85 transition hover:text-[#D8B66C]"
           >
             <span className="text-xl">←</span>
-            {isTelugu ? 'తిరిగి వెళ్లండి' : 'Back to Songs'}
+            <span>{isTelugu ? 'తిరిగి వెళ్లండి' : 'Back to Songs'}</span>
           </Link>
 
           <Link
             href="/"
-            className="text-lg font-bold tracking-wide text-[#32165C]"
+            className="shrink-0 text-lg font-bold tracking-wide text-white"
           >
             <span className="mr-1 text-[#D8B66C]">✦</span>
             WorshipVerse
@@ -305,79 +390,88 @@ export default function SongDetailClient({ id }: Props) {
         </div>
       </header>
 
-      <section className="mx-auto flex min-h-[calc(100svh-65px)] max-w-5xl flex-col px-5 py-8 sm:px-10 sm:py-12">
+      <section className="mx-auto flex min-h-[calc(100svh-60px)] max-w-5xl flex-col px-4 py-6 sm:px-8 sm:py-9">
+        {/* Song Information Card */}
+        <div className="rounded-3xl border border-white/50 bg-[#FAF8F4]/95 p-4 shadow-2xl backdrop-blur-md sm:p-6">
+          <div className="flex items-center gap-4 sm:gap-5">
+            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-[#D8B66C]/50 shadow-md sm:h-24 sm:w-24">
+              <img
+                src="/images/worship-instruments.jpg"
+                alt="Worship instruments"
+                className="h-full w-full object-cover"
+              />
+            </div>
 
-        {/* Song Information */}
-        <div className="border-b border-[#EAE5DC] pb-7">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#9B7A3C]">
-            {isTelugu
-              ? 'తెలుగు ఆరాధన పాట'
-              : 'WorshipVerse • Worship Song'}
-          </p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#9B7A3C] sm:text-xs">
+                {isTelugu ? 'తెలుగు ఆరాధన పాట' : 'WorshipVerse • Worship Song'}
+              </p>
 
-          <div className="mt-5 flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <h1 className="break-words text-3xl font-bold leading-tight tracking-tight text-[#32165C] sm:text-5xl">
+              <h1 className="mt-2 break-words text-xl font-bold leading-tight text-[#32165C] sm:text-3xl">
                 {song.title}
               </h1>
 
-              <p className="mt-3 text-base text-gray-500">
+              <p className="mt-2 truncate text-sm text-gray-500">
                 {song.artist || 'WorshipVerse'}
               </p>
             </div>
 
             {!offline && (
-              <div className="shrink-0 rounded-full border border-[#EAE5DC] bg-[#FAF8F4] p-2">
+              <div className="shrink-0 rounded-full border border-[#EAE5DC] bg-white p-2 shadow-sm">
                 <FavouriteButton songId={song.id} />
               </div>
             )}
           </div>
 
-          {offline && (
-            <p className="mt-4 inline-block rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
-              Available offline
-            </p>
-          )}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[#32165C]/10 px-3 py-1 text-xs font-semibold text-[#32165C]">
+              {isTelugu ? 'తెలుగు' : 'English'}
+            </span>
 
-          <div className="mt-6 h-[2px] w-16 rounded-full bg-[#D8B66C]" />
+            {offline && (
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                <span className="mr-1">✓</span>
+                Available offline
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Lyrics Section */}
-        <div className="flex-1 py-9 sm:py-12">
-          <div className="mb-7 flex items-center justify-between gap-3">
+        {/* Lyrics Card */}
+        <div className="mt-5 rounded-3xl border border-white/40 bg-[#FAF8F4]/95 p-4 shadow-2xl backdrop-blur-md sm:mt-6 sm:p-7">
+          <div className="mb-5 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="h-px w-8 bg-[#D8B66C]" />
-
-              <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-[#9B7A3C]">
+              <span className="h-px w-7 bg-[#D8B66C]" />
+              <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-[#9B7A3C]">
                 {isTelugu ? 'పాట సాహిత్యం' : 'Song Lyrics'}
               </h2>
             </div>
 
-            {/* Hidden Font Size Controls */}
+            {/* Lyrics Font Controls */}
             <div ref={fontControlsRef} className="relative">
               <button
                 type="button"
                 onClick={() => setFontControlsOpen((open) => !open)}
                 aria-label="Lyrics text settings"
                 aria-expanded={fontControlsOpen}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E8E0D2] bg-[#FAF8F4] text-sm font-bold text-[#32165C] transition hover:border-[#D8B66C] hover:bg-[#F2EBDD]"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E8E0D2] bg-white text-sm font-bold text-[#32165C] shadow-sm transition hover:border-[#D8B66C] hover:bg-[#F2EBDD]"
               >
                 Aa
               </button>
 
               {fontControlsOpen && (
-                <div className="absolute right-0 top-12 z-40 flex items-center gap-2 rounded-2xl border border-[#E8E0D2] bg-white p-3 shadow-xl">
+                <div className="absolute right-0 top-12 z-40 flex items-center gap-1 rounded-2xl border border-[#E8E0D2] bg-white p-2 shadow-xl sm:gap-2 sm:p-3">
                   <button
                     type="button"
                     onClick={decreaseFontSize}
                     disabled={fontSize <= MIN_FONT_SIZE}
                     aria-label="Decrease lyrics font size"
-                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E8E0D2] text-lg font-bold text-[#32165C] transition hover:bg-[#FAF8F4] disabled:cursor-not-allowed disabled:opacity-30"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E8E0D2] text-lg font-bold text-[#32165C] transition hover:bg-[#FAF8F4] disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     A−
                   </button>
 
-                  <span className="min-w-10 text-center text-xs font-semibold text-gray-500">
+                  <span className="min-w-9 text-center text-xs font-semibold text-gray-500">
                     {fontSize}px
                   </span>
 
@@ -386,7 +480,7 @@ export default function SongDetailClient({ id }: Props) {
                     onClick={increaseFontSize}
                     disabled={fontSize >= MAX_FONT_SIZE}
                     aria-label="Increase lyrics font size"
-                    className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E8E0D2] text-lg font-bold text-[#32165C] transition hover:bg-[#FAF8F4] disabled:cursor-not-allowed disabled:opacity-30"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E8E0D2] text-lg font-bold text-[#32165C] transition hover:bg-[#FAF8F4] disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     A+
                   </button>
@@ -396,7 +490,7 @@ export default function SongDetailClient({ id }: Props) {
                     onClick={resetFontSize}
                     aria-label="Reset lyrics font size"
                     title="Reset font size"
-                    className="ml-1 rounded-lg px-2 py-2 text-xs font-semibold text-[#9B7A3C] transition hover:bg-[#FAF8F4]"
+                    className="rounded-lg px-2 py-2 text-xs font-semibold text-[#9B7A3C] transition hover:bg-[#FAF8F4]"
                   >
                     Reset
                   </button>
@@ -417,16 +511,16 @@ export default function SongDetailClient({ id }: Props) {
           {isTelugu ? (
             <div>
               {/* Lyrics Language Switcher */}
-              <div className="mb-7 flex justify-center">
-                <div className="inline-flex rounded-full border border-[#E8E0D2] bg-[#FAF8F4] p-1">
+              <div className="mb-6 flex justify-center">
+                <div className="inline-flex rounded-full border border-[#E8E0D2] bg-white p-1 shadow-sm">
                   <button
                     type="button"
                     onClick={() => setLyricsView('te')}
                     aria-pressed={lyricsView === 'te'}
-                    className={`rounded-full px-7 py-3 text-sm font-bold transition ${
+                    className={`rounded-full px-6 py-2.5 text-sm font-bold transition sm:px-8 ${
                       lyricsView === 'te'
                         ? 'bg-[#32165C] text-white shadow-sm'
-                        : 'text-[#32165C] hover:bg-white'
+                        : 'text-[#32165C] hover:bg-[#FAF8F4]'
                     }`}
                   >
                     తెలుగు
@@ -436,10 +530,10 @@ export default function SongDetailClient({ id }: Props) {
                     type="button"
                     onClick={() => setLyricsView('en')}
                     aria-pressed={lyricsView === 'en'}
-                    className={`rounded-full px-7 py-3 text-sm font-bold transition ${
+                    className={`rounded-full px-6 py-2.5 text-sm font-bold transition sm:px-8 ${
                       lyricsView === 'en'
                         ? 'bg-[#32165C] text-white shadow-sm'
-                        : 'text-[#32165C] hover:bg-white'
+                        : 'text-[#32165C] hover:bg-[#FAF8F4]'
                     }`}
                   >
                     English
@@ -448,7 +542,7 @@ export default function SongDetailClient({ id }: Props) {
               </div>
 
               {/* Selected Lyrics */}
-              <div className="mx-auto max-w-3xl rounded-2xl border border-[#EAE5DC] bg-[#FAF8F4] p-6 sm:p-10">
+              <div className="mx-auto max-w-3xl rounded-2xl border border-[#EAE5DC] bg-white/80 p-5 shadow-sm sm:p-9">
                 {lyricsView === 'te' ? (
                   <p
                     style={lyricsStyle}
@@ -468,46 +562,100 @@ export default function SongDetailClient({ id }: Props) {
               </div>
             </div>
           ) : (
-            <p
-              style={lyricsStyle}
-              className="whitespace-pre-wrap break-words text-[#333333]"
-            >
-              {song.lyrics || 'Lyrics are not available yet.'}
-            </p>
+            <div className="mx-auto max-w-3xl rounded-2xl border border-[#EAE5DC] bg-white/80 p-5 shadow-sm sm:p-9">
+              <p
+                style={lyricsStyle}
+                className="whitespace-pre-wrap break-words text-[#333333]"
+              >
+                {song.lyrics || 'Lyrics are not available yet.'}
+              </p>
+            </div>
           )}
         </div>
 
-        {/* YouTube and Footer */}
-        <div className="mt-auto border-t border-[#EAE5DC] pt-6">
-          {song.youtube_url && (
-            <a
-              href={song.youtube_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#32165C] px-5 py-4 font-semibold text-white shadow-sm transition hover:bg-[#24103F] sm:mx-auto sm:max-w-sm"
-            >
-              <span className="text-lg text-[#D8B66C]">
+        {/* YouTube Player */}
+        {youtubeVideoId && !offline && (
+          <section className="mt-5 rounded-3xl border border-white/20 bg-[#160B25]/90 p-4 text-white shadow-2xl backdrop-blur-md sm:mt-6 sm:p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#D8B66C]/15 text-lg text-[#D8B66C]">
                 ▶
               </span>
 
+              <div>
+                <h2 className="text-sm font-bold">
+                  {isTelugu ? 'పాట వినండి' : 'Watch & Listen'}
+                </h2>
+                <p className="mt-0.5 text-xs text-white/55">
+                  WorshipVerse
+                </p>
+              </div>
+            </div>
+
+            <div className="aspect-video w-full overflow-hidden rounded-2xl bg-black shadow-lg">
+              <iframe
+                key={youtubeVideoId}
+                src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}?rel=0`}
+                title={`YouTube video for ${song.title}`}
+                className="h-full w-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+
+            {safeYouTubeUrl && (
+              <p className="mt-3 text-center text-xs text-white/60">
+                If the video cannot play here,{' '}
+                <a
+                  href={safeYouTubeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-[#D8B66C] underline underline-offset-2 hover:text-white"
+                >
+                  watch it on YouTube
+                </a>
+                .
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* Fallback when the URL is a YouTube link but no valid video ID was found */}
+        {!youtubeVideoId && safeYouTubeUrl && !offline && (
+          <div className="mt-5 rounded-2xl border border-white/20 bg-[#160B25]/90 p-5 text-center text-white shadow-xl">
+            <p className="text-sm text-white/75">
               {isTelugu
-                ? 'YouTube లో పాట వినండి'
-                : 'Watch on YouTube'}
-            </a>
-          )}
-
-          {offline && (
-            <p className="mt-3 text-center text-xs text-gray-400">
-              YouTube requires an internet connection.
+                ? 'ఈ పాటను YouTube లో వినండి'
+                : 'Listen to this song on YouTube'}
             </p>
-          )}
 
-          <p className="mt-6 text-center text-xs tracking-wide text-gray-400">
-            WorshipVerse{' '}
-            <span className="text-[#D8B66C]">✦</span>{' '}
-            Every song, a prayer.
+            <a
+              href={safeYouTubeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-[#D8B66C] px-5 py-3 text-sm font-bold text-[#24103F] transition hover:bg-[#E8CD91]"
+            >
+              <span>▶</span>
+              Watch on YouTube
+            </a>
+          </div>
+        )}
+
+        {/* Offline YouTube Notice */}
+        {offline && song.youtube_url && (
+          <p className="mt-5 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-center text-xs text-white/75">
+            YouTube requires an internet connection. Your downloaded lyrics
+            are still available offline.
           </p>
-        </div>
+        )}
+
+        {/* Footer */}
+        <footer className="mt-auto pb-2 pt-8 text-center">
+          <p className="text-xs tracking-wide text-white/65">
+            WorshipVerse <span className="text-[#D8B66C]">✦</span> Every song,
+            a prayer.
+          </p>
+        </footer>
       </section>
     </main>
   );

@@ -10,7 +10,11 @@ import {
   saveSongs,
   type OfflineSong,
 } from '@/lib/offline/song-storage';
-import { toTeluguSearchQuery } from '@/lib/indic-transliteration';
+import {
+  toTeluguSearchQuery,
+  toRomanSearchQuery,
+} from '@/lib/indic-transliteration';
+
 import VoiceSearchForm from './VoiceSearchForm';
 import DownloadAllSongs from './DownloadAllSongs';
 import FavouriteButton from './FavouriteButton';
@@ -24,27 +28,39 @@ function normalizeSearchText(value: string) {
   return value
     .normalize('NFC')
     .toLowerCase()
+    .replace(
+      /\b(christmas|kristmas|krismas|krisamas|khrismas|khristmas)\b/g,
+      'christmas'
+    )
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeRomanText(value: string) {
+  return normalizeSearchText(value);
 }
 
 export default function SongsLibraryClient({
   language,
   search,
 }: Props) {
-  
-
   const [songs, setSongs] = useState<OfflineSong[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [online, setOnline] = useState(true);
+  const [manualSearch, setManualSearch] = useState(search);
 
   const isTelugu = language === 'te';
 
+  // Keep search synchronized with URL updates.
+  useEffect(() => {
+    setManualSearch(search);
+  }, [search]);
+
   // Prepare original and Telugu-converted search terms.
   const searchCandidates = useMemo(() => {
-    const original = search.trim();
+    const original = manualSearch.trim();
 
     if (!original) return [];
 
@@ -56,25 +72,35 @@ export default function SongsLibraryClient({
     return [...new Set([original, converted])]
       .map(normalizeSearchText)
       .filter(Boolean);
-  }, [search, language]);
+  }, [manualSearch, language]);
 
-  // Search song titles only.
-  // Exact matches appear before partial matches.
+  // Search Telugu song titles and Roman-English versions.
   const filteredSongs = useMemo(() => {
     if (searchCandidates.length === 0) {
       return songs;
     }
 
+    const normalizedCandidates = searchCandidates.map(
+      normalizeRomanText
+    );
+
     return songs
       .map((song) => {
         const title = normalizeSearchText(song.title);
 
-        const exactMatch = searchCandidates.some(
-          (candidate) => title === candidate
+        const romanTitle = normalizeRomanText(
+          toRomanSearchQuery(song.title)
         );
 
-        const partialMatch = searchCandidates.some(
-          (candidate) => title.includes(candidate)
+        const exactMatch = normalizedCandidates.some(
+          (candidate) =>
+            title === candidate || romanTitle === candidate
+        );
+
+        const partialMatch = normalizedCandidates.some(
+          (candidate) =>
+            title.includes(candidate) ||
+            romanTitle.includes(candidate)
         );
 
         return {
@@ -87,6 +113,7 @@ export default function SongsLibraryClient({
       .map((item) => item.song);
   }, [songs, searchCandidates]);
 
+  // Load cached songs first, then refresh from Supabase.
   useEffect(() => {
     let active = true;
 
@@ -141,9 +168,10 @@ export default function SongsLibraryClient({
         return;
       }
 
-      // STEP 3: Fetch the language library from Supabase.
+      // STEP 3: Fetch songs from Supabase.
       try {
         const supabase = createClient();
+
         const { data, error: fetchError } = await supabase
           .from('songs')
           .select(
@@ -226,8 +254,15 @@ export default function SongsLibraryClient({
   }, [language]);
 
   return (
-    <main className="min-h-screen bg-[#FAF8F4] text-[#24103F]">
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#24103F]/95 px-5 py-4 text-white shadow-lg backdrop-blur-md">
+    <main
+      className="min-h-screen bg-fixed bg-cover bg-center bg-no-repeat text-[#24103F]"
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(36, 16, 63, 0.78), rgba(36, 16, 63, 0.88)), url('/images/worship-background.jpg')",
+      }}
+    >
+      {/* Header */}
+      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#24103F]/95 px-4 py-4 text-white shadow-lg backdrop-blur-md sm:px-6">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <Link
             href="/"
@@ -239,64 +274,37 @@ export default function SongsLibraryClient({
 
           <Link
             href="/"
-            className="rounded-full border border-[#D8B66C]/50 px-5 py-2 text-sm font-medium text-[#E8D5A5]"
+            className="rounded-full border border-[#D8B66C]/50 px-5 py-2 text-sm font-medium text-[#E8D5A5] transition hover:bg-white/10"
           >
             Home
           </Link>
         </div>
       </header>
 
-      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="relative mb-9 overflow-hidden rounded-3xl bg-gradient-to-br from-[#32165C] via-[#3B1B69] to-[#24103F] p-7 text-white shadow-xl sm:p-10">
-          <div className="pointer-events-none absolute -right-12 -top-20 h-64 w-64 rounded-full border border-[#D8B66C]/20" />
+      {/* Main content */}
+      <section className="mx-auto min-h-[75vh] max-w-7xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
 
-          <div className="relative z-10">
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.3em] text-[#D8B66C]">
-              WorshipVerse Library
-            </p>
-
-            <h1 className="text-3xl font-bold leading-tight sm:text-4xl">
-              {isTelugu ? 'తెలుగు ఆరాధన పాటలు' : 'Songs of Worship'}
-            </h1>
-
-            <p className="mt-3 max-w-xl text-sm leading-7 text-purple-100 sm:text-base">
-              {isTelugu
-                ? 'మీ హృదయాన్ని దేవుని ఆరాధనతో నింపే తెలుగు పాటలను అన్వేషించండి.'
-                : 'Discover beautiful worship songs and let every lyric bring you closer to God.'}
-            </p>
-
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#D8B66C]/40 bg-white/5 px-4 py-2 text-sm text-[#E8D5A5]">
-                ✦ {filteredSongs.length} {isTelugu ? 'పాటలు' : 'Songs'}
-              </span>
-
-              <span className="rounded-full border border-white/20 px-4 py-2 text-xs text-white">
-                {online ? 'Online' : 'Offline Mode'}
-              </span>
-            </div>
-          </div>
-        </div>
-
+        {/* Language selector and heading */}
         <div className="mb-7 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-[#32165C]">
+            <h1 className="text-xl font-bold text-white drop-shadow-md sm:text-2xl">
               {isTelugu ? 'పాటల సేకరణ' : 'Explore Songs'}
-            </h2>
+            </h1>
 
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-purple-100">
               {isTelugu
                 ? 'మీకు ఇష్టమైన పాటలను ఎంచుకోండి'
                 : 'Find your favourite worship songs'}
             </p>
           </div>
 
-          <div className="flex rounded-full border border-[#E8E0D2] bg-white p-1 shadow-sm">
+          <div className="flex rounded-full border border-white/20 bg-white p-1 shadow-md">
             <Link
               href="/songs?language=te"
-              className={`rounded-full px-5 py-2 text-sm font-semibold ${
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition sm:px-5 ${
                 isTelugu
-                  ? 'bg-[#32165C] text-white'
-                  : 'text-gray-600'
+                  ? 'bg-[#32165C] text-white shadow'
+                  : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
               తెలుగు
@@ -304,10 +312,10 @@ export default function SongsLibraryClient({
 
             <Link
               href="/songs?language=en"
-              className={`rounded-full px-5 py-2 text-sm font-semibold ${
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition sm:px-5 ${
                 !isTelugu
-                  ? 'bg-[#32165C] text-white'
-                  : 'text-gray-600'
+                  ? 'bg-[#32165C] text-white shadow'
+                  : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
               English
@@ -315,48 +323,109 @@ export default function SongsLibraryClient({
           </div>
         </div>
 
-        <div className="mb-4">
-          <VoiceSearchForm
-            language={language}
-            initialQuery={search}
-          />
+        {/* Search */}
+        <div className="mb-7">
+          <label
+            htmlFor="manual-song-search"
+            className="mb-2 block text-sm font-semibold text-white"
+          >
+            {isTelugu
+              ? 'పాట పేరు టైప్ చేయండి'
+              : 'Search songs by title'}
+          </label>
+
+          <div className="flex items-center gap-3 rounded-2xl border border-white/30 bg-white px-4 py-3 shadow-lg transition focus-within:border-[#D8B66C] focus-within:ring-2 focus-within:ring-[#D8B66C]/30">
+            <span
+              className="text-xl text-[#9B7A3C]"
+              aria-hidden="true"
+            >
+              🔍
+            </span>
+
+            <input
+              id="manual-song-search"
+              type="search"
+              value={manualSearch}
+              onChange={(event) =>
+                setManualSearch(event.target.value)
+              }
+              placeholder={
+                isTelugu
+                  ? 'పాట పేరు టైప్ చేయండి...'
+                  : 'Type a song title...'
+              }
+              className="min-w-0 flex-1 bg-transparent text-sm text-[#24103F] outline-none placeholder:text-gray-400"
+              autoComplete="off"
+            />
+
+            {manualSearch && (
+              <button
+                type="button"
+                onClick={() => setManualSearch('')}
+                aria-label="Clear search"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F3EFE7] text-lg text-[#32165C] transition hover:bg-[#E8E0D2]"
+              >
+                ×
+              </button>
+            )}
+
+            <VoiceSearchForm
+              language={language}
+              onTranscript={(transcript) =>
+                setManualSearch(transcript)
+              }
+            />
+          </div>
+
+          <p className="mt-2 text-xs leading-5 text-purple-100">
+            {isTelugu
+              ? 'తెలుగు లేదా English అక్షరాలతో పాట పేరు వెతకండి. మైక్రోఫోన్ ద్వారా కూడా వెతకవచ్చు.'
+              : 'Search using song titles or the microphone.'}
+          </p>
         </div>
 
+        {/* Download all songs */}
         {online && (
-          <div className="mb-9">
+          <div className="mb-7">
             <DownloadAllSongs />
           </div>
         )}
 
+        {/* Loading */}
         {loading ? (
-          <p className="py-10 text-center text-gray-500">
+          <p className="py-10 text-center text-white">
             Loading songs...
           </p>
         ) : error && songs.length === 0 ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700 shadow-lg">
             {error}
           </div>
         ) : filteredSongs.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          /* Song cards */
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
             {filteredSongs.map((song) => (
               <article
                 key={song.id}
-                className="group flex items-center justify-between gap-4 rounded-2xl border border-[#E8E0D2] bg-white p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[#D8B66C] hover:shadow-lg"
+                className="group flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/20 bg-white/95 p-3 shadow-lg backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#D8B66C] hover:shadow-xl sm:gap-4 sm:p-4"
               >
                 <Link
                   href={`/songs/${song.id}`}
-                  className="flex min-w-0 flex-1 items-center gap-4"
+                  className="flex min-w-0 flex-1 items-center gap-3"
                 >
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#32165C] to-[#24103F] text-2xl text-[#D8B66C]">
-                    ♫
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[#24103F] sm:h-16 sm:w-16">
+                    <img
+                      src="/images/worship-instruments.jpg"
+                      alt="Trumpet, piano and guitar"
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-110"
+                    />
                   </div>
 
                   <div className="min-w-0">
-                    <h2 className="break-words text-base font-bold text-[#32165C] group-hover:text-[#9B7A3C] sm:text-lg">
+                    <h2 className="break-words text-sm font-bold text-[#32165C] group-hover:text-[#9B7A3C] sm:text-base">
                       {song.title}
                     </h2>
 
-                    <p className="mt-1 truncate text-sm text-gray-500">
+                    <p className="mt-1 truncate text-xs text-gray-500 sm:text-sm">
                       {song.artist || 'WorshipVerse'}
                     </p>
                   </div>
@@ -369,11 +438,14 @@ export default function SongsLibraryClient({
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-[#D8B66C] bg-white p-10 text-center">
+          /* No songs found */
+          <div className="rounded-2xl border border-dashed border-[#D8B66C] bg-white/95 p-8 text-center shadow-lg sm:p-10">
             <div className="text-4xl text-[#9B7A3C]">♫</div>
 
             <h2 className="mt-4 text-xl font-bold text-[#32165C]">
-              {isTelugu ? 'పాటలు కనుగొనబడలేదు' : 'No Songs Found'}
+              {isTelugu
+                ? 'పాటలు కనుగొనబడలేదు'
+                : 'No Songs Found'}
             </h2>
 
             <p className="mt-2 text-sm text-gray-500">
@@ -382,24 +454,29 @@ export default function SongsLibraryClient({
                 : 'No downloaded songs are available in this language.'}
             </p>
 
-            {search && (
-              <Link
-                href={`/songs?language=${language}`}
-                className="mt-5 inline-block rounded-full bg-[#32165C] px-5 py-2.5 text-sm font-semibold text-white"
+            {manualSearch && (
+              <button
+                type="button"
+                onClick={() => setManualSearch('')}
+                className="mt-5 rounded-full bg-[#32165C] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#432276]"
               >
-                Clear Search
-              </Link>
+                {isTelugu
+                  ? 'వెతుకులాట తొలగించండి'
+                  : 'Clear Search'}
+              </button>
             )}
           </div>
         )}
       </section>
 
-      <footer className="border-t border-[#E8E0D2] bg-white px-5 py-7 text-center">
-        <p className="text-sm font-semibold text-[#32165C]">
-          WorshipVerse <span className="text-[#D8B66C]">✦</span>
+      {/* Footer */}
+      <footer className="border-t border-white/15 bg-[#24103F]/95 px-5 py-7 text-center text-white backdrop-blur-md">
+        <p className="text-sm font-semibold">
+          WorshipVerse{' '}
+          <span className="text-[#D8B66C]">✦</span>
         </p>
 
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-purple-200">
           Every song, a prayer. Every lyric, an offering.
         </p>
       </footer>

@@ -2,6 +2,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -12,20 +13,27 @@ export default function HomePage() {
 
   const isTelugu = language === 'te';
 
+  // Load authentication state only after the component mounts.
   useEffect(() => {
     const supabase = createClient();
+    let active = true;
 
     supabase.auth.getUser().then(({ data }) => {
-      setUserEmail(data.user?.email ?? '');
+      if (active) {
+        setUserEmail(data.user?.email ?? '');
+      }
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setUserEmail(session?.user?.email ?? '');
+        if (active) {
+          setUserEmail(session?.user?.email ?? '');
+        }
       }
     );
 
     return () => {
+      active = false;
       listener.subscription.unsubscribe();
     };
   }, []);
@@ -42,23 +50,52 @@ export default function HomePage() {
     window.location.href = '/login';
   }
 
-  function handleLanguageChange() {
-    setLanguage(isTelugu ? 'en' : 'te');
-  }
+  const features = [
+    {
+      icon: '♫',
+      title: isTelugu ? 'ఆరాధన గీతాలు' : 'Worship Library',
+      description: isTelugu
+        ? 'తెలుగు మరియు ఆంగ్ల ఆరాధన పాటలను కనుగొనండి.'
+        : 'Discover Christian worship songs in Telugu and English.',
+    },
+    {
+      icon: '↓',
+      title: isTelugu ? 'ఆఫ్‌లైన్ వినియోగం' : 'Offline Listening',
+      description: isTelugu
+        ? 'పాటలను డౌన్‌లోడ్ చేసి ఎప్పుడైనా వినండి.'
+        : 'Download songs and access them even without internet.',
+    },
+    {
+      icon: '♡',
+      title: isTelugu ? 'ఇష్టమైన పాటలు' : 'Your Favourites',
+      description: isTelugu
+        ? 'మీకు ఇష్టమైన పాటలను భద్రపరచుకోండి.'
+        : 'Save your favourite songs for quick access.',
+    },
+    {
+      icon: '☷',
+      title: isTelugu ? 'వ్యక్తిగత ప్లేలిస్టులు' : 'Personal Playlists',
+      description: isTelugu
+        ? 'మీ పాటలతో ప్రత్యేకమైన ప్లేలిస్టులు సృష్టించండి.'
+        : 'Create playlists and organise the songs you love.',
+    },
+  ];
 
   return (
     <main className="min-h-screen bg-[#FAF8F4] text-[#24103F]">
 
       {/* Navigation */}
       <header className="sticky top-0 z-50 border-b border-white/10 bg-[#24103F] text-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-5 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
 
-          <a href="/" className="flex items-center gap-3">
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-3">
             <Image
               src="/images/worshipverse-logo.png"
               alt="WorshipVerse logo"
               width={52}
               height={52}
+              priority
               className="rounded-xl object-contain"
             />
 
@@ -70,331 +107,456 @@ export default function HomePage() {
                 SHARON A.G. CHURCH
               </p>
             </div>
-          </a>
+          </Link>
 
+          {/* Desktop navigation */}
           <nav className="hidden items-center gap-8 text-sm text-white/80 sm:flex">
-            <a href="#home" className="transition hover:text-[#D8B66C]">
+            <Link href="#home" className="transition hover:text-[#D8B66C]">
               Home
-            </a>
-            <a href="#languages" className="transition hover:text-[#D8B66C]">
+            </Link>
+            <Link href="#languages" className="transition hover:text-[#D8B66C]">
               Languages
-            </a>
+            </Link>
+            <Link href="#features" className="transition hover:text-[#D8B66C]">
+              Features
+            </Link>
+            <Link href="/download" className="transition hover:text-[#D8B66C]">
+              Download
+            </Link>
           </nav>
 
+          {/* Account and language controls */}
           <div className="flex items-center gap-2 sm:gap-3">
 
-            {/* Account */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setProfileOpen(!profileOpen)}
-                aria-expanded={profileOpen}
-                className="flex items-center gap-2 rounded-full border border-[#D8B66C]/50 px-2 py-2 text-xs text-white transition hover:bg-white/10 sm:px-3 sm:text-sm"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#D8B66C] font-bold text-[#24103F]">
-                  {userEmail ? userEmail[0].toUpperCase() : 'U'}
-                </span>
-
-                <span className="hidden sm:inline">My Account</span>
-                <span>⌄</span>
-              </button>
-
-              {profileOpen && (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Close account menu"
-                    className="fixed inset-0 z-40 cursor-default"
-                    onClick={() => setProfileOpen(false)}
-                  />
-
-                  <div className="absolute right-0 top-full z-50 mt-3 w-64 rounded-2xl border border-[#E9E1D3] bg-white p-3 text-[#32165C] shadow-xl">
-
-                    <div className="border-b border-[#E9E1D3] px-3 py-3">
-                      <p className="text-xs text-gray-400">
-                        Signed in as
-                      </p>
-                      <p className="mt-1 truncate text-sm font-semibold">
-                        {userEmail || 'WorshipVerse Member'}
-                      </p>
-                    </div>
-
-                    <div className="py-2">
-                      {[
-                        ['My Profile', '/profile'],
-                        ['My Favourites', '/favourites'],
-                        ['My Playlists', '/playlists'],
-                        ['Account Settings', '/settings'],
-                      ].map(([label, href]) => (
-                        <a
-                          key={href}
-                          href={href}
-                          className="block rounded-lg px-3 py-2 text-sm transition hover:bg-[#F4EFFA]"
-                        >
-                          {label}
-                        </a>
-                      ))}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleSignOut}
-                      className="w-full rounded-lg border-t border-[#E9E1D3] px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
-                    >
-                      Sign Out
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Language switch */}
             <button
               type="button"
-              onClick={handleLanguageChange}
-              className="rounded-full border border-[#D8B66C]/60 px-3 py-2 text-xs font-semibold text-[#D8B66C] transition hover:bg-white/10"
+              onClick={() => setLanguage(isTelugu ? 'en' : 'te')}
+              className="rounded-full border border-[#D8B66C] px-3 py-2 text-xs font-semibold text-[#E8C77E] transition hover:bg-[#D8B66C] hover:text-[#24103F]"
             >
-              {isTelugu ? 'English' : 'తెలుగు'}
+              {isTelugu ? 'English →' : 'తెలుగు →'}
             </button>
+
+            {userEmail ? (
+              <div className="relative">
+
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(!profileOpen)}
+                  aria-expanded={profileOpen}
+                  className="flex items-center gap-2 rounded-full border border-[#D8B66C]/50 px-2 py-2 text-xs text-white transition hover:bg-white/10 sm:px-3 sm:text-sm"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#D8B66C] font-bold text-[#24103F]">
+                    {userEmail[0].toUpperCase()}
+                  </span>
+                  <span className="hidden sm:inline">My Account</span>
+                  <span>⌄</span>
+                </button>
+
+                {profileOpen && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Close account menu"
+                      className="fixed inset-0 z-40 cursor-default"
+                      onClick={() => setProfileOpen(false)}
+                    />
+
+                    <div className="absolute right-0 top-full z-50 mt-3 w-64 rounded-2xl border border-[#E9E1D3] bg-white p-3 text-[#32165C] shadow-2xl">
+
+                      <div className="border-b border-[#E9E1D3] px-3 py-3">
+                        <p className="text-xs text-gray-400">
+                          Signed in as
+                        </p>
+                        <p className="mt-1 truncate text-sm font-semibold">
+                          {userEmail}
+                        </p>
+                      </div>
+
+                      <div className="py-2">
+                        {[
+                          ['My Profile', '/profile'],
+                          ['My Favourites', '/favourites'],
+                          ['My Playlists', '/playlists'],
+                          ['Account Settings', '/settings'],
+                        ].map(([label, href]) => (
+                          <Link
+                            key={href}
+                            href={href}
+                            onClick={() => setProfileOpen(false)}
+                            className="block rounded-lg px-3 py-2 text-sm transition hover:bg-[#F4EFFA]"
+                          >
+                            {label}
+                          </Link>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleSignOut}
+                        className="w-full rounded-lg border-t border-[#E9E1D3] px-3 py-3 text-left text-sm font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Sign Out
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="rounded-full bg-gradient-to-r from-[#E8C77E] to-[#D8B66C] px-4 py-2.5 text-xs font-bold text-[#24103F] shadow-md transition hover:-translate-y-0.5 hover:shadow-lg sm:px-5 sm:text-sm"
+              >
+                Sign In
+              </Link>
+            )}
           </div>
         </div>
+
+        {/* Mobile navigation */}
+        <nav className="flex items-center justify-center gap-8 border-t border-white/10 px-3 py-3 text-xs text-white/75 sm:hidden">
+          <Link href="#languages" className="hover:text-[#D8B66C]">
+            Languages
+          </Link>
+          <Link href="#features" className="hover:text-[#D8B66C]">
+            Features
+          </Link>
+          <Link href="/download" className="hover:text-[#D8B66C]">
+            Download
+          </Link>
+        </nav>
       </header>
 
-      {/* Hero */}
+      {/* Premium hero */}
       <section
         id="home"
-        className="relative overflow-hidden bg-[#24103F] text-white"
+        className="relative isolate flex min-h-[510px] items-center overflow-hidden bg-[#1B0D2D] text-white sm:min-h-[570px]"
       >
-        <div className="pointer-events-none absolute -right-40 -top-40 h-[500px] w-[500px] rounded-full bg-[#65409A]/25 blur-[120px]" />
-        <div className="pointer-events-none absolute -bottom-40 -left-40 h-[450px] w-[450px] rounded-full bg-[#D8B66C]/10 blur-[120px]" />
+        <Image
+          src="/images/worshipverse-hero-artwork.png"
+          alt="A cross illuminated by a beautiful sunrise"
+          fill
+          priority
+          sizes="100vw"
+          className="absolute inset-0 -z-20 object-cover object-center"
+        />
 
-        <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-5 py-20 sm:py-24 lg:grid-cols-[1.15fr_0.85fr] lg:px-8 lg:py-28">
+        {/* Image overlays */}
+        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#1B0D2D] via-[#24103F]/90 to-[#24103F]/10" />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-t from-[#1B0D2D]/40 via-transparent to-[#1B0D2D]/10" />
 
-          {/* Hero content */}
-          <div>
-            <div className="inline-flex items-center gap-3 rounded-full border border-[#D8B66C]/35 bg-white/[0.04] px-4 py-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#D8B66C]" />
-              <span className="text-[10px] font-semibold tracking-[0.24em] text-[#D8B66C]">
-                {isTelugu
-                  ? 'ఆరాధన • స్తుతి • గీతాలు'
-                  : 'WORSHIP • PRAISE • SONGS'}
+        <div className="mx-auto w-full max-w-7xl px-5 py-20 sm:px-8 sm:py-24 lg:px-10 lg:py-28">
+          <div className="max-w-3xl">
+
+            <div className="inline-flex items-center gap-3 rounded-full border border-[#D8B66C]/50 bg-[#24103F]/40 px-4 py-2 backdrop-blur-sm">
+              <span className="h-2 w-2 rounded-full bg-[#E8C77E] shadow-[0_0_12px_#D8B66C]" />
+              <span className="text-[10px] font-bold tracking-[0.2em] text-[#E8C77E] sm:text-xs">
+                {isTelugu ? 'ఆరాధన • స్తుతి • గీతాలు' : 'WORSHIP • PRAISE • SONGS'}
               </span>
             </div>
 
-            <h2 className="mt-8 max-w-2xl text-4xl font-semibold leading-[1.15] tracking-tight sm:text-5xl lg:text-6xl">
-              {isTelugu
-                ? 'ప్రతి పాట ఒక ప్రార్థన.'
-                : 'Let your heart'}
-              <span className="mt-2 block text-[#D8B66C]">
-                {isTelugu
-                  ? 'ప్రతి వాక్యం ఒక స్తుతి.'
-                  : 'sing in worship.'}
+            <h2 className="mt-7 font-serif text-5xl font-bold leading-[1.08] tracking-tight sm:text-6xl lg:text-7xl">
+              {isTelugu ? 'ప్రతి పాట ఒక ప్రార్థన.' : 'Songs of Worship'}
+              <span className="mt-2 block italic text-[#E8C77E]">
+                {isTelugu ? 'ప్రతి వాక్యం ఒక స్తుతి.' : 'for Every Heart.'}
               </span>
             </h2>
 
-            <p className="mt-7 max-w-xl text-sm leading-8 text-white/65 sm:text-base">
+            <p className="mt-7 max-w-xl text-base leading-8 text-white/85 sm:text-lg">
               {isTelugu
-                ? 'తెలుగు మరియు ఆంగ్ల క్రైస్తవ ఆరాధన గీతాలను ఒకే చోట కనుగొనండి.'
-                : 'Discover Telugu and English Christian worship songs, lyrics and praise in one place.'}
+                ? 'తెలుగు మరియు ఆంగ్ల క్రైస్తవ ఆరాధన గీతాలను ఒకే చోట కనుగొనండి. మీ హృదయాన్ని ఆరాధనతో నింపుకోండి.'
+                : 'Discover Telugu and English Christian worship songs, lyrics and praise in one beautiful place.'}
             </p>
 
-            <div className="mt-7 flex flex-wrap items-center gap-3 text-xs text-white/50">
+            <div className="mt-9 flex flex-wrap items-center gap-4">
+              <Link
+                href="/songs?language=te"
+                className="inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-[#F2D18A] to-[#D8B66C] px-7 py-4 text-sm font-bold text-[#24103F] shadow-[0_8px_30px_rgba(216,182,108,0.25)] transition hover:-translate-y-1 hover:shadow-xl"
+              >
+                {isTelugu ? 'పాటలను అన్వేషించండి' : 'Explore Songs'}
+                <span className="text-lg">→</span>
+              </Link>
+
+              <Link
+                href="/download"
+                className="inline-flex items-center gap-3 rounded-full border border-[#E8C77E] bg-[#24103F]/30 px-7 py-4 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-[#D8B66C] hover:text-[#24103F]"
+              >
+                <span className="text-lg">↓</span>
+                {isTelugu ? 'యాప్ డౌన్‌లోడ్' : 'Get the App'}
+              </Link>
+            </div>
+
+            <div className="mt-9 flex flex-wrap items-center gap-3 text-xs text-white/80">
               <span>♫ Telugu Worship</span>
-              <span className="text-[#D8B66C]">•</span>
+              <span className="text-[#E8C77E]">•</span>
               <span>♫ English Worship</span>
-              <span className="text-[#D8B66C]">•</span>
+              <span className="text-[#E8C77E]">•</span>
               <span>✦ Praise Together</span>
             </div>
           </div>
-
-          {/* Premium visual panel */}
-          <div className="mx-auto w-full max-w-md">
-
-            <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-white/[0.06] p-3 shadow-2xl backdrop-blur-sm sm:p-5">
-
-              <div className="relative flex min-h-[330px] flex-col items-center justify-center overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-[#65409A] via-[#43236F] to-[#32165C] px-6 py-10 text-center">
-
-                <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full border border-white/10" />
-                <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full border border-white/10" />
-                <div className="absolute -bottom-28 -left-16 h-64 w-64 rounded-full border border-[#D8B66C]/15" />
-
-                <div className="relative flex h-24 w-24 items-center justify-center rounded-full border border-[#D8B66C]/50 bg-white/[0.08] shadow-xl">
-                  <span className="text-5xl text-[#D8B66C]">♫</span>
-                </div>
-
-                <p className="relative mt-9 text-[10px] font-semibold tracking-[0.3em] text-[#D8B66C]">
-                  WORSHIPVERSE
-                </p>
-
-                <h3 className="relative mt-4 text-3xl font-semibold tracking-tight text-white">
-                  {isTelugu ? 'స్తుతి గీతాలు' : 'Songs of Praise'}
-                </h3>
-
-                <p className="relative mt-4 max-w-xs text-sm leading-7 text-white/65">
-                  {isTelugu
-                    ? 'కలిసి పాడుదాం. కలిసి ఆరాధిద్దాం.'
-                    : 'Sing together. Worship together. Grow together.'}
-                </p>
-
-                <div className="relative mt-8 h-px w-16 bg-[#D8B66C]/60" />
-
-                <p className="relative mt-5 text-[10px] tracking-[0.2em] text-white/50">
-                  EVERY SONG, A PRAYER
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 px-3 py-5">
-                <span className="text-xs text-white/60">
-                  SHARON A.G. CHURCH
-                </span>
-                <span className="text-xs font-semibold tracking-wider text-[#D8B66C]">
-                  EST. WORSHIPVERSE
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
-      {/* Language selection */}
-      <section
-        id="languages"
-        className="mx-auto max-w-7xl px-5 py-20 sm:py-24 lg:px-8"
-      >
-        <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-
-          <div>
-            <p className="text-[10px] font-bold tracking-[0.25em] text-[#A17B38]">
-              {isTelugu ? 'భాషను ఎంచుకోండి' : 'EXPLORE BY LANGUAGE'}
-            </p>
-
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#32165C] sm:text-4xl">
-              {isTelugu
-                ? 'మీ భాషలో ఆరాధించండి'
-                : 'Worship in your language.'}
-            </h2>
-          </div>
-
-          <p className="max-w-sm text-sm leading-7 text-gray-500">
-            {isTelugu
-              ? 'మీకు ఇష్టమైన భాషలో ఆరాధన గీతాలను కనుగొనండి.'
-              : 'Discover songs of praise and worship in the language closest to your heart.'}
-          </p>
-        </div>
-
-        <div className="grid gap-5 md:grid-cols-2">
-
-          {/* Telugu card */}
-          <a
-            href="/songs?language=te"
-            className="group relative min-h-[270px] overflow-hidden rounded-[1.75rem] border border-[#E9E1D3] bg-[#24103F] p-7 text-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[#D8B66C]/60 hover:shadow-xl sm:p-9"
-          >
-            <div className="absolute -right-12 -top-16 h-64 w-64 rounded-full border border-white/10 transition duration-500 group-hover:scale-110" />
-            <div className="absolute -right-4 -top-8 h-44 w-44 rounded-full border border-[#D8B66C]/20" />
-
-            <div className="relative flex h-full flex-col justify-between gap-8">
-
+      {/* Quick feature strip */}
+      <section className="border-y border-[#D8B66C]/20 bg-gradient-to-r from-[#1B0D2D] via-[#32134F] to-[#1B0D2D] text-white">
+        <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-white/15 px-4 py-6 sm:grid-cols-4 lg:px-8">
+          {[
+            ['♫', 'Worship Library', 'Telugu & English'],
+            ['↓', 'Offline Listening', 'Anytime, Anywhere'],
+            ['♡', 'Your Favourites', 'Save for Later'],
+            ['☷', 'Personal Playlists', 'Organise Easily'],
+          ].map(([icon, title, subtitle]) => (
+            <div key={title} className="flex items-center justify-center gap-3 px-3 py-3">
+              <span className="font-serif text-3xl text-[#E8C77E]">{icon}</span>
               <div>
-                <p className="text-[10px] font-semibold tracking-[0.25em] text-[#D8B66C]">
-                  01 · TELUGU COLLECTION
-                </p>
-
-                <h3 className="mt-7 text-5xl font-semibold tracking-tight sm:text-6xl">
-                  తెలుగు
-                </h3>
-
-                <p className="mt-3 text-sm text-white/65">
-                  Telugu Christian worship and praise songs
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-white/15 pt-5">
-                <span className="text-xs font-semibold tracking-[0.15em] text-[#D8B66C]">
-                  EXPLORE SONGS
-                </span>
-
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D8B66C]/50 text-[#D8B66C] transition group-hover:bg-[#D8B66C] group-hover:text-[#24103F]">
-                  ↗
-                </span>
+                <p className="text-xs font-bold sm:text-sm">{title}</p>
+                <p className="mt-1 text-[10px] text-white/60 sm:text-xs">{subtitle}</p>
               </div>
             </div>
-          </a>
-
-          {/* English card */}
-          <a
-            href="/songs?language=en"
-            className="group relative min-h-[270px] overflow-hidden rounded-[1.75rem] border border-[#E9E1D3] bg-gradient-to-br from-[#43236F] to-[#24103F] p-7 text-white shadow-sm transition duration-300 hover:-translate-y-1 hover:border-[#D8B66C]/60 hover:shadow-xl sm:p-9"
-          >
-            <div className="absolute -right-12 -top-16 h-64 w-64 rounded-full border border-white/10 transition duration-500 group-hover:scale-110" />
-            <div className="absolute -right-4 -top-8 h-44 w-44 rounded-full border border-[#D8B66C]/20" />
-
-            <div className="relative flex h-full flex-col justify-between gap-8">
-
-              <div>
-                <p className="text-[10px] font-semibold tracking-[0.25em] text-[#D8B66C]">
-                  02 · ENGLISH COLLECTION
-                </p>
-
-                <h3 className="mt-7 text-5xl font-semibold tracking-tight sm:text-6xl">
-                  English
-                </h3>
-
-                <p className="mt-3 text-sm text-white/65">
-                  English Christian worship and praise songs
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-white/15 pt-5">
-                <span className="text-xs font-semibold tracking-[0.15em] text-[#D8B66C]">
-                  EXPLORE SONGS
-                </span>
-
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#D8B66C]/50 text-[#D8B66C] transition group-hover:bg-[#D8B66C] group-hover:text-[#24103F]">
-                  ↗
-                </span>
-              </div>
-            </div>
-          </a>
+          ))}
         </div>
       </section>
 
-      {/* Call to action */}
-      <section className="bg-[#32165C] px-5 py-16 text-center text-white">
-        <p className="text-[10px] font-bold tracking-[0.25em] text-[#D8B66C]">
-          SHARON A.G. CHURCH
+{/* Language collections */}
+<section className="py-12 sm:py-16">
+  <div className="mx-auto max-w-7xl px-5 sm:px-8">
+    <div className="mb-7 flex items-end justify-between">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#B18A45]">
+          Explore the collection
         </p>
-
-        <h2 className="mt-4 text-3xl font-semibold tracking-tight">
-          {isTelugu ? 'ఆరాధనలో మాతో చేరండి' : 'Be Part of the Worship'}
+        <h2 className="mt-2 text-2xl font-bold tracking-tight text-[#24103F] sm:text-3xl">
+          Songs in your language
         </h2>
+      </div>
+    </div>
 
-        <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-white/65">
-          {isTelugu
-            ? 'మీ ఆరాధన ప్రయాణాన్ని WorshipVerse తో ప్రారంభించండి.'
-            : 'Start your worship journey with WorshipVerse.'}
-        </p>
-      </section>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <Link
+        href="/songs?language=te"
+        className="group relative isolate flex min-h-[150px] items-end overflow-hidden rounded-2xl border border-[#E9E2D5] p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:min-h-[175px] sm:p-6"
+      >
+        <Image
+          src="/images/telugu-worship.jpg"
+          alt="Telugu Christian worship"
+          fill
+          sizes="(max-width: 640px) 100vw, 50vw"
+          className="absolute inset-0 -z-20 object-cover transition duration-700 group-hover:scale-105"
+        />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#160B2B]/90 via-[#160B2B]/55 to-transparent" />
+        <div className="flex w-full items-end justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-[#E7C982]">
+              Telugu collection
+            </p>
+            <h3 className="mt-1 text-2xl font-bold text-white sm:text-3xl">
+              తెలుగు పాటలు
+            </h3>
+            <p className="mt-1 text-sm text-white/80">
+              Explore Telugu worship songs
+            </p>
+          </div>
+          <span className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/40 text-xl text-white transition group-hover:bg-white group-hover:text-[#24103F]">
+            →
+          </span>
+        </div>
+      </Link>
+
+      <Link
+        href="/songs?language=en"
+        className="group relative isolate flex min-h-[150px] items-end overflow-hidden rounded-2xl border border-[#E9E2D5] p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:min-h-[175px] sm:p-6"
+      >
+        <Image
+          src="/images/english-worship.jpg"
+          alt="English Christian worship"
+          fill
+          sizes="(max-width: 640px) 100vw, 50vw"
+          className="absolute inset-0 -z-20 object-cover transition duration-700 group-hover:scale-105"
+        />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#160B2B]/90 via-[#160B2B]/55 to-transparent" />
+        <div className="flex w-full items-end justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-[#E7C982]">
+              English collection
+            </p>
+            <h3 className="mt-1 text-2xl font-bold text-white sm:text-3xl">
+              English Songs
+            </h3>
+            <p className="mt-1 text-sm text-white/80">
+              Explore English worship songs
+            </p>
+          </div>
+          <span className="mb-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/40 text-xl text-white transition group-hover:bg-white group-hover:text-[#24103F]">
+            →
+          </span>
+        </div>
+      </Link>
+    </div>
+  </div>
+</section>
+
+
+{/* Features */}
+<section
+  id="features"
+  className="relative isolate overflow-hidden border-y border-[#E9E1D3] py-16 sm:py-20"
+>
+  <Image
+    src="/images/english-worship.jpg"
+    alt="Christian worship atmosphere"
+    fill
+    sizes="100vw"
+    className="absolute inset-0 -z-20 object-cover"
+  />
+  <div className="absolute inset-0 -z-10 bg-[#FAF8F4]/95" />
+
+  <div className="mx-auto max-w-7xl px-5 lg:px-8">
+    <div className="mx-auto mb-12 max-w-2xl text-center">
+      <p className="text-[10px] font-bold tracking-[0.25em] text-[#A17B38]">
+        {isTelugu ? 'WORSHIPVERSE ప్రత్యేకతలు' : 'MADE FOR YOUR WORSHIP'}
+      </p>
+
+      <h2 className="mt-3 font-serif text-3xl font-bold tracking-tight text-[#32165C] sm:text-4xl">
+        {isTelugu ? 'ఆరాధనకు మరింత దగ్గరగా' : 'A Better Way to Worship'}
+      </h2>
+
+      <p className="mt-4 text-sm leading-7 text-gray-600">
+        {isTelugu
+          ? 'మీ ఆరాధన అనుభవాన్ని సులభంగా మరియు ప్రత్యేకంగా మార్చే సదుపాయాలు.'
+          : 'Thoughtful features to make your worship experience simple and meaningful.'}
+      </p>
+    </div>
+
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {features.map((feature, index) => {
+        const featureImages = [
+          '/images/telugu-worship.jpg',
+          '/images/english-worship.jpg',
+          '/images/worshipverse-hero-artwork.png',
+          '/images/telugu-worship.jpg',
+        ];
+
+        return (
+          <div
+            key={feature.title}
+            className="group overflow-hidden rounded-2xl border border-[#E9E1D3] bg-white shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-xl"
+          >
+            <div className="relative h-36 overflow-hidden">
+              <Image
+                src={featureImages[index]}
+                alt={feature.title}
+                fill
+                sizes="(max-width: 1024px) 50vw, 25vw"
+                className="object-cover transition duration-700 group-hover:scale-110"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#24103F]/80 to-transparent" />
+              <span className="absolute bottom-3 left-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[#D8B66C] text-2xl text-[#24103F]">
+                {feature.icon}
+              </span>
+            </div>
+
+            <div className="p-5">
+              <h3 className="text-lg font-bold text-[#32165C]">
+                {feature.title}
+              </h3>
+              <p className="mt-2 text-sm leading-7 text-gray-500">
+                {feature.description}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+</section>
+
+{/* Call to action */}
+<section className="relative isolate overflow-hidden px-5 py-24 text-center text-white sm:py-32">
+  <Image
+    src="/images/worshipverse-hero-artwork.png"
+    alt="Cross illuminated by golden sunrise"
+    fill
+    sizes="100vw"
+    className="absolute inset-0 -z-20 object-cover object-center"
+  />
+
+  <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#170A27]/95 via-[#24103F]/85 to-[#170A27]/75" />
+
+  <div className="relative mx-auto max-w-3xl">
+    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-[#D8B66C]/60 bg-white/10 font-serif text-4xl text-[#E8C77E] backdrop-blur-sm">
+      ✦
+    </div>
+
+    <p className="mt-7 text-[10px] font-bold tracking-[0.3em] text-[#D8B66C]">
+      SHARON A.G. CHURCH
+    </p>
+
+    <h2 className="mt-5 font-serif text-3xl font-bold tracking-tight sm:text-5xl">
+      {isTelugu ? 'ఆరాధనలో మాతో చేరండి' : 'Let’s Worship Together'}
+    </h2>
+
+    <p className="mx-auto mt-5 max-w-xl text-sm leading-8 text-white/80 sm:text-base">
+      {isTelugu
+        ? 'మీ ఆరాధన ప్రయాణాన్ని WorshipVerse తో ప్రారంభించండి.'
+        : 'Discover songs, lift your voice and make every moment an offering of praise.'}
+    </p>
+
+    <Link
+      href="/songs?language=te"
+      className="mt-9 inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-[#E8C77E] to-[#D8B66C] px-8 py-4 text-sm font-bold text-[#24103F] shadow-lg transition hover:-translate-y-1 hover:shadow-xl"
+    >
+      {isTelugu ? 'ఇప్పుడే ప్రారంభించండి' : 'Start Exploring'}
+      <span className="text-lg">→</span>
+    </Link>
+  </div>
+</section>
+
 
       {/* Footer */}
-<footer className="bg-[#1B0D2D] px-5 py-9 text-center text-sm text-white/50">
-  <p className="font-semibold text-white">WorshipVerse</p>
+      <footer className="bg-[#170A27] px-5 py-10 text-white/60">
+        <div className="mx-auto flex max-w-7xl flex-col gap-8 md:flex-row md:items-center md:justify-between">
 
-  <p className="mt-2 text-xs text-[#D8B66C]">
-    Every Song, A Prayer. Every Verse, A Praise.
-  </p>
+          <div>
+            <Link href="/" className="flex items-center gap-3">
+              <Image
+                src="/images/worshipverse-logo.png"
+                alt="WorshipVerse logo"
+                width={42}
+                height={42}
+                className="rounded-lg object-contain"
+              />
+              <span className="font-serif text-xl font-bold text-[#E8C77E]">
+                WorshipVerse
+              </span>
+            </Link>
 
-  <a
-  href="/download"
-  className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#D8B66C]/60 px-5 py-3 text-xs font-semibold tracking-wider text-[#D8B66C] transition hover:bg-[#D8B66C] hover:text-[#24103F]"
->
-    <span>⬇</span>
-    {isTelugu ? 'Android కోసం డౌన్‌లోడ్ చేయండి' : 'Download for Android'}
-  </a>
+            <p className="mt-3 text-xs">
+              Every song, a prayer. Every lyric, an offering.
+            </p>
+            <p className="mt-1 text-[10px] tracking-wider text-[#D8B66C]/70">
+              SHARON A.G. CHURCH
+            </p>
+          </div>
 
-  <p className="mt-5 text-xs">
-    © 2026 WorshipVerse · SHARON A.G. CHURCH
-  </p>
-</footer>
+          <div className="flex flex-wrap gap-x-7 gap-y-3 text-xs">
+            <Link href="/" className="transition hover:text-[#D8B66C]">Home</Link>
+            <Link href="/songs?language=te" className="transition hover:text-[#D8B66C]">Songs</Link>
+            <Link href="#features" className="transition hover:text-[#D8B66C]">Features</Link>
+            <Link href="/download" className="transition hover:text-[#D8B66C]">Download</Link>
+            <Link href="/login" className="transition hover:text-[#D8B66C]">Sign In</Link>
+          </div>
+
+          <Link
+            href="/download"
+            className="inline-flex items-center justify-center gap-2 self-start rounded-full bg-gradient-to-r from-[#E8C77E] to-[#D8B66C] px-6 py-3 text-xs font-bold text-[#24103F] transition hover:-translate-y-0.5 hover:shadow-lg md:self-auto"
+          >
+            ↓ {isTelugu ? 'Android కోసం డౌన్‌లోడ్' : 'Download for Android'}
+          </Link>
+        </div>
+
+        <div className="mx-auto mt-9 max-w-7xl border-t border-white/10 pt-6 text-center text-[11px]">
+          © 2026 WorshipVerse · SHARON A.G. CHURCH. All rights reserved.
+        </div>
+      </footer>
     </main>
   );
 }
