@@ -1,4 +1,4 @@
-﻿
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -247,7 +247,7 @@ export default function SettingsPage() {
           <section className="rounded-2xl border border-[#E8E0D2]/70 bg-[#FAF8F4]/95 p-5 text-[#24103F] shadow-xl sm:p-7">
             <div className="mb-5 flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F1E6CC] text-xl text-[#80601F]">
-                âœ‰
+                ✉
               </div>
 
               <div>
@@ -300,7 +300,7 @@ export default function SettingsPage() {
           <section className="rounded-2xl border border-[#E8E0D2]/70 bg-[#FAF8F4]/95 p-5 text-[#24103F] shadow-xl sm:p-7">
             <div className="mb-5 flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F1E6CC] text-xl text-[#80601F]">
-                ðŸ”’
+                🔒
               </div>
 
               <div>
@@ -417,13 +417,13 @@ export default function SettingsPage() {
             onClick={() => router.back()}
             className="text-sm font-semibold text-[#F1D99D] hover:underline"
           >
-            â† Back
+            ← Back
           </button>
         </div>
       </section>
 
       <footer className="mt-12 border-t border-white/15 bg-[#24103F]/70 px-5 py-5 text-center text-xs text-white/65">
-        Â© 2026 WorshipVerse
+        © 2026 WorshipVerse
       </footer>
     </main>
   );

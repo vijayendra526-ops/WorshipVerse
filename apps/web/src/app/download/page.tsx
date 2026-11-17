@@ -4,22 +4,22 @@ import Link from 'next/link';
 
 const features = [
   {
-    icon: 'â™«',
+    icon: '♫',
     title: 'Worship Songs',
     description: 'Explore Telugu and English Christian worship songs.',
   },
   {
-    icon: 'âŒ•',
+    icon: '⌕',
     title: 'Voice Search',
     description: 'Find your favourite worship songs using your voice.',
   },
   {
-    icon: 'â™¡',
+    icon: '♡',
     title: 'Your Favourites',
     description: 'Keep the songs you love together in one place.',
   },
   {
-    icon: 'â†“',
+    icon: '↓',
     title: 'Offline Access',
     description: 'Read songs you have downloaded without internet.',
   },
@@ -34,7 +34,7 @@ const installationSteps = [
   {
     number: '02',
     title: 'Open the downloaded file',
-    description: 'Find WorshipVerse.apk in your phoneâ€™s Downloads folder.',
+    description: "Find WorshipVerse.apk in your phone's Downloads folder.",
   },
   {
     number: '03',
@@ -95,7 +95,7 @@ export default function DownloadPage() {
           <div className="grid items-center gap-6 p-6 sm:p-9 md:grid-cols-[1fr_240px]">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#D8B66C]">
-                Worship â€¢ Praise â€¢ Songs
+                Worship • Praise • Songs
               </p>
 
               <h2 className="mt-3 text-3xl font-bold leading-tight sm:text-4xl">
@@ -118,13 +118,13 @@ export default function DownloadPage() {
                 className="mt-7 inline-flex w-full items-center justify-center gap-3 rounded-xl bg-[#D8B66C] px-7 py-4 text-sm font-bold text-[#24103F] shadow-lg transition hover:bg-[#E8CA83] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#D8B66C] sm:w-auto"
               >
                 <span aria-hidden="true" className="text-xl">
-                  â†“
+                  ↓
                 </span>
                 Download for Android
               </a>
 
               <p className="mt-3 text-xs text-white/60">
-                Android APK Â· Version 1.0.0
+                Android APK · Version 1.0.0
               </p>
 
               <p className="mt-1 text-xs text-white/50">
@@ -243,7 +243,7 @@ export default function DownloadPage() {
               download="WorshipVerse.apk"
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#32165C] px-7 py-3.5 text-sm font-bold text-white transition hover:bg-[#48247C] sm:w-auto"
             >
-              â†“ Download WorshipVerse APK
+              ↓ Download WorshipVerse APK
             </a>
           </div>
         </section>
@@ -268,7 +268,7 @@ export default function DownloadPage() {
         </p>
 
         <p className="mt-3 text-xs text-white/60">
-          Â© 2026 WorshipVerse Â· SHARON A.G. CHURCH
+          © 2026 WorshipVerse · SHARON A.G. CHURCH
         </p>
       </footer>
     </main>

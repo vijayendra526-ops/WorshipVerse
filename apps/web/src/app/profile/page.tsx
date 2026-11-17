@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -123,7 +123,7 @@ export default function ProfilePage() {
 
   const initial = name.trim()
     ? Array.from(name.trim())[0].toLocaleUpperCase()
-    : 'â™ª';
+    : '♪';
 
   return (
     <main
@@ -261,14 +261,14 @@ export default function ProfilePage() {
                   href="/favourites"
                   className="rounded-xl border border-[#E9E1D3] bg-white px-4 py-4 text-center text-sm font-semibold transition hover:border-[#D8B66C] hover:bg-[#F4EFF9]"
                 >
-                  â™¥ My Favourites
+                  ♥ My Favourites
                 </Link>
 
                 <Link
                   href="/playlists"
                   className="rounded-xl border border-[#E9E1D3] bg-white px-4 py-4 text-center text-sm font-semibold transition hover:border-[#D8B66C] hover:bg-[#F4EFF9]"
                 >
-                  â™« My Playlists
+                  ♫ My Playlists
                 </Link>
 
                 <Link
@@ -295,7 +295,7 @@ export default function ProfilePage() {
       </section>
 
       <footer className="mt-12 border-t border-white/15 bg-[#24103F]/70 px-5 py-5 text-center text-xs text-white/65">
-        Â© 2026 WorshipVerse
+        © 2026 WorshipVerse
       </footer>
     </main>
   );

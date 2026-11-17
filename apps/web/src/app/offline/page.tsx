@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import Image from 'next/image';
@@ -17,7 +17,7 @@ const languageOptions: {
   label: string;
 }[] = [
   { value: 'all', label: 'All Songs' },
-  { value: 'te', label: 'à°¤à±†à°²à±à°—à±' },
+  { value: 'te', label: 'తెలుగు' },
   { value: 'en', label: 'English' },
 ];
 
@@ -196,7 +196,7 @@ export default function OfflinePage() {
               {teluguCount}
             </p>
             <p className="mt-1 text-xs text-gray-600">
-              à°¤à±†à°²à±à°—à±
+              తెలుగు
             </p>
           </div>
 
@@ -292,7 +292,7 @@ export default function OfflinePage() {
 
                     <span className="mt-2 inline-block rounded-full bg-[#F1E6CC] px-3 py-1 text-[11px] font-semibold text-[#80601F]">
                       {song.language === 'te'
-                        ? 'à°¤à±†à°²à±à°—à±'
+                        ? 'తెలుగు'
                         : 'English'}
                     </span>
                   </div>
@@ -345,7 +345,7 @@ export default function OfflinePage() {
         ) : (
           <div className="mt-7 rounded-2xl border border-[#D8B66C]/40 bg-[#FAF8F4]/95 p-8 text-center text-[#24103F] shadow-lg">
             <div className="text-4xl text-[#A17B38]">
-              â™«
+              ♫
             </div>
 
             <h2 className="mt-3 text-xl font-bold text-[#32165C]">
@@ -398,7 +398,7 @@ export default function OfflinePage() {
       </section>
 
       <footer className="mt-10 border-t border-white/15 bg-[#24103F]/70 px-5 py-5 text-center text-xs text-white/65">
-        Â© 2026 WorshipVerse
+        © 2026 WorshipVerse
       </footer>
     </main>
   );

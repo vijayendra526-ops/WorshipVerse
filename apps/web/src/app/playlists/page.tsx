@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -353,7 +353,7 @@ export default function PlaylistsPage() {
           </p>
 
           <h1 className="mt-2 text-2xl font-bold sm:text-3xl">
-            <span className="text-[#D8B66C]">â™«</span> My Playlists
+            <span className="text-[#D8B66C]">♫</span> My Playlists
           </h1>
 
           <p className="mt-2 text-sm text-white/75">
@@ -451,7 +451,7 @@ export default function PlaylistsPage() {
                         </p>
 
                         <span className="mt-2 inline-block text-xs font-semibold text-[#80601F]">
-                          View songs â†’
+                          View songs →
                         </span>
                       </button>
                     </div>
@@ -540,7 +540,7 @@ export default function PlaylistsPage() {
                             </Link>
 
                             <p className="truncate text-xs text-gray-500">
-                              {song.artist || 'WorshipVerse'} Â·{' '}
+                              {song.artist || 'WorshipVerse'} ·{' '}
                               {song.language === 'te'
                                 ? 'Telugu'
                                 : 'English'}
@@ -634,7 +634,7 @@ export default function PlaylistsPage() {
               </>
             ) : (
               <div className="flex min-h-64 flex-col items-center justify-center text-center">
-                <span className="text-5xl text-[#C39A48]">â™«</span>
+                <span className="text-5xl text-[#C39A48]">♫</span>
 
                 <h2 className="mt-4 text-xl font-bold text-[#32165C]">
                   Select a Playlist
@@ -650,7 +650,7 @@ export default function PlaylistsPage() {
       </section>
 
       <footer className="mt-12 border-t border-white/15 bg-[#24103F]/70 px-5 py-5 text-center text-xs text-white/65">
-        Â© 2026 WorshipVerse
+        © 2026 WorshipVerse
       </footer>
     </main>
   );

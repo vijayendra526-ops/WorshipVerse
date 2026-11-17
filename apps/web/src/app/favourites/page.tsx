@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -147,7 +147,7 @@ export default function FavouritesPage() {
               Your Personal Library
             </p>
             <h1 className="mt-2 text-2xl font-bold sm:text-3xl">
-              <span className="text-[#D8B66C]">â™¥</span> My Favourites
+              <span className="text-[#D8B66C]">♥</span> My Favourites
             </h1>
             <p className="mt-2 text-sm text-white/75">
               Your saved worship songs, all in one place.
@@ -226,7 +226,7 @@ export default function FavouritesPage() {
                     aria-label={`Remove ${song.title} from favourites`}
                     className="shrink-0 rounded-full border border-red-200 bg-red-50 px-2.5 py-1.5 text-lg text-red-600 transition hover:bg-red-100 disabled:cursor-wait disabled:opacity-50"
                   >
-                    {removingId === song.id ? 'â€¦' : 'â™¥'}
+                    {removingId === song.id ? '…' : '♥'}
                   </button>
                 </div>
 
@@ -252,7 +252,7 @@ export default function FavouritesPage() {
           </div>
         ) : !error ? (
           <div className="mx-auto max-w-xl rounded-2xl border border-[#D8B66C]/40 bg-[#FAF8F4]/95 px-6 py-12 text-center text-[#24103F] shadow-xl">
-            <div className="text-5xl text-[#C39A48]">â™¡</div>
+            <div className="text-5xl text-[#C39A48]">♡</div>
 
             <h2 className="mt-4 text-xl font-bold">
               No favourites yet
@@ -273,7 +273,7 @@ export default function FavouritesPage() {
       </section>
 
       <footer className="mt-12 border-t border-white/15 bg-[#24103F]/70 px-5 py-5 text-center text-xs text-white/65">
-        Â© 2026 WorshipVerse
+        © 2026 WorshipVerse
       </footer>
     </main>
   );

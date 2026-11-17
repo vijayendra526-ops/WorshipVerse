@@ -1,4 +1,4 @@
-﻿
+
 'use client';
 
 import Image from 'next/image';
@@ -84,7 +84,7 @@ export default function LoginPage() {
         } else {
           setMessage(
             isTelugu
-              ? 'à°¨à°®à±‹à°¦à± à°…à°­à±à°¯à°°à±à°¥à°¨ à°…à°‚à°¦à°¿à°‚à°¦à°¿. à°®à±€ à°‡à°®à±†à°¯à°¿à°²à±â€Œà°¨à± à°§à±ƒà°µà±€à°•à°°à°¿à°‚à°šà°‚à°¡à°¿.'
+              ? 'నమోదు అభ్యర్థన అందింది. మీ ఇమెయిల్‌ను ధృవీకరించండి.'
               : 'Registration request received. Please check your email to confirm your account.'
           );
           setPassword('');
@@ -112,7 +112,7 @@ export default function LoginPage() {
         err instanceof Error
           ? err.message
           : isTelugu
-            ? 'à°à°¦à±‹ à°¸à°®à°¸à±à°¯ à°à°°à±à°ªà°¡à°¿à°‚à°¦à°¿. à°®à°³à±à°²à±€ à°ªà±à°°à°¯à°¤à±à°¨à°¿à°‚à°šà°‚à°¡à°¿.'
+            ? 'ఏదో సమస్య ఏర్పడింది. మళ్లీ ప్రయత్నించండి.'
             : 'Something went wrong. Please try again.'
       );
     } finally {
@@ -158,7 +158,7 @@ export default function LoginPage() {
         className="flex min-h-screen items-center justify-center bg-cover bg-center text-white"
         style={backgroundStyle}
       >
-        {isTelugu ? 'à°¦à°¯à°šà±‡à°¸à°¿ à°µà±‡à°šà°¿ à°‰à°‚à°¡à°‚à°¡à°¿...' : 'Please wait...'}
+        {isTelugu ? 'దయచేసి వేచి ఉండండి...' : 'Please wait...'}
       </main>
     );
   }
@@ -198,7 +198,7 @@ export default function LoginPage() {
             }
             className="shrink-0 rounded-full border border-[#D8B66C]/60 bg-white/10 px-4 py-2 text-xs font-semibold text-[#F1D99D] transition hover:bg-white/20"
           >
-            {isTelugu ? 'English' : 'à°¤à±†à°²à±à°—à±'}
+            {isTelugu ? 'English' : 'తెలుగు'}
           </button>
         </header>
 
@@ -218,17 +218,17 @@ export default function LoginPage() {
             <div className="absolute bottom-4 left-5 right-5 text-white sm:left-7">
               <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#F1D99D]">
                 {isTelugu
-                  ? 'à°†à°°à°¾à°§à°¨ â€¢ à°¸à±à°¤à±à°¤à°¿ â€¢ à°—à±€à°¤à°¾à°²à±'
-                  : 'WORSHIP â€¢ PRAISE â€¢ SONGS'}
+                  ? 'ఆరాధన • స్తుతి • గీతాలు'
+                  : 'WORSHIP • PRAISE • SONGS'}
               </p>
 
               <h2 className="mt-2 text-2xl font-bold sm:text-3xl">
                 {isSignup
                   ? isTelugu
-                    ? 'à°–à°¾à°¤à°¾ à°¸à±ƒà°·à±à°Ÿà°¿à°‚à°šà°‚à°¡à°¿'
+                    ? 'ఖాతా సృష్టించండి'
                     : 'Create Account'
                   : isTelugu
-                    ? 'à°¤à°¿à°°à°¿à°—à°¿ à°¸à±à°µà°¾à°—à°¤à°‚'
+                    ? 'తిరిగి స్వాగతం'
                     : 'Welcome Back'}
               </h2>
             </div>
@@ -238,10 +238,10 @@ export default function LoginPage() {
             <p className="mb-6 text-center text-sm text-gray-600">
               {isSignup
                 ? isTelugu
-                  ? 'WorshipVerse à°²à±‹ à°®à±€ à°ªà±à°°à°¯à°¾à°£à°¾à°¨à±à°¨à°¿ à°ªà±à°°à°¾à°°à°‚à°­à°¿à°‚à°šà°‚à°¡à°¿.'
+                  ? 'WorshipVerse లో మీ ప్రయాణాన్ని ప్రారంభించండి.'
                   : 'Create your account and join WorshipVerse.'
                 : isTelugu
-                  ? 'à°®à±€ à°†à°°à°¾à°§à°¨ à°ªà±à°°à°¯à°¾à°£à°¾à°¨à±à°¨à°¿ à°•à±Šà°¨à°¸à°¾à°—à°¿à°‚à°šà°‚à°¡à°¿.'
+                  ? 'మీ ఆరాధన ప్రయాణాన్ని కొనసాగించండి.'
                   : 'Sign in to continue your worship journey.'}
             </p>
 
@@ -251,7 +251,7 @@ export default function LoginPage() {
                   htmlFor="login-email"
                   className="mb-2 block text-sm font-semibold text-[#32165C]"
                 >
-                  {isTelugu ? 'à°‡à°®à±†à°¯à°¿à°²à±' : 'Email Address'}
+                  {isTelugu ? 'ఇమెయిల్' : 'Email Address'}
                 </label>
 
                 <input
@@ -271,7 +271,7 @@ export default function LoginPage() {
                   htmlFor="login-password"
                   className="mb-2 block text-sm font-semibold text-[#32165C]"
                 >
-                  {isTelugu ? 'à°ªà°¾à°¸à±â€Œà°µà°°à±à°¡à±' : 'Password'}
+                  {isTelugu ? 'పాస్‌వర్డ్' : 'Password'}
                 </label>
 
                 <div className="relative">
@@ -289,7 +289,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={
                       isTelugu
-                        ? 'à°®à±€ à°ªà°¾à°¸à±â€Œà°µà°°à±à°¡à± à°¨à°®à±‹à°¦à± à°šà±‡à°¯à°‚à°¡à°¿'
+                        ? 'మీ పాస్‌వర్డ్ నమోదు చేయండి'
                         : 'Enter your password'
                     }
                     className="w-full rounded-xl border border-[#E9E1D3] bg-white px-4 py-3 pr-20 text-sm outline-none transition focus:border-[#65409A] focus:ring-2 focus:ring-[#65409A]/15"
@@ -307,10 +307,10 @@ export default function LoginPage() {
                   >
                     {showPassword
                       ? isTelugu
-                        ? 'à°¦à°¾à°šà±'
+                        ? 'దాచు'
                         : 'Hide'
                       : isTelugu
-                        ? 'à°šà±‚à°ªà±'
+                        ? 'చూపు'
                         : 'Show'}
                   </button>
                 </div>
@@ -336,14 +336,14 @@ export default function LoginPage() {
               >
                 {loading
                   ? isTelugu
-                    ? 'à°¦à°¯à°šà±‡à°¸à°¿ à°µà±‡à°šà°¿ à°‰à°‚à°¡à°‚à°¡à°¿...'
+                    ? 'దయచేసి వేచి ఉండండి...'
                     : 'Please wait...'
                   : isSignup
                     ? isTelugu
-                      ? 'à°–à°¾à°¤à°¾ à°¸à±ƒà°·à±à°Ÿà°¿à°‚à°šà°‚à°¡à°¿'
+                      ? 'ఖాతా సృష్టించండి'
                       : 'Create Account'
                     : isTelugu
-                      ? 'à°²à°¾à°—à°¿à°¨à±'
+                      ? 'లాగిన్'
                       : 'Sign In'}
               </button>
             </form>
@@ -351,7 +351,7 @@ export default function LoginPage() {
             <div className="my-6 flex items-center gap-4">
               <div className="h-px flex-1 bg-[#E9E1D3]" />
               <span className="text-xs text-gray-500">
-                {isTelugu ? 'à°²à±‡à°¦à°¾' : 'OR'}
+                {isTelugu ? 'లేదా' : 'OR'}
               </span>
               <div className="h-px flex-1 bg-[#E9E1D3]" />
             </div>
@@ -366,17 +366,17 @@ export default function LoginPage() {
                 G
               </span>
               {isTelugu
-                ? 'Google à°¤à±‹ à°•à±Šà°¨à°¸à°¾à°—à°¿à°‚à°šà°‚à°¡à°¿'
+                ? 'Google తో కొనసాగించండి'
                 : 'Continue with Google'}
             </button>
 
             <p className="mt-6 text-center text-sm text-gray-600">
               {isSignup
                 ? isTelugu
-                  ? 'à°‡à°ªà±à°ªà°Ÿà°¿à°•à±‡ à°–à°¾à°¤à°¾ à°‰à°‚à°¦à°¾?'
+                  ? 'ఇప్పటికే ఖాతా ఉందా?'
                   : 'Already have an account?'
                 : isTelugu
-                  ? 'à°–à°¾à°¤à°¾ à°²à±‡à°¦à°¾?'
+                  ? 'ఖాతా లేదా?'
                   : "Don't have an account?"}{' '}
 
               <button
@@ -392,10 +392,10 @@ export default function LoginPage() {
               >
                 {isSignup
                   ? isTelugu
-                    ? 'à°²à°¾à°—à°¿à°¨à± à°šà±‡à°¯à°‚à°¡à°¿'
+                    ? 'లాగిన్ చేయండి'
                     : 'Sign In'
                   : isTelugu
-                    ? 'à°¨à°®à±‹à°¦à± à°šà±‡à°¸à±à°•à±‹à°‚à°¡à°¿'
+                    ? 'నమోదు చేసుకోండి'
                     : 'Create Account'}
               </button>
             </p>
@@ -406,7 +406,7 @@ export default function LoginPage() {
                 className="text-xs font-semibold text-[#65409A] hover:underline"
               >
                 {isTelugu
-                  ? 'à°²à°¾à°—à°¿à°¨à± à°²à±‡à°•à±à°‚à°¡à°¾ à°ªà°¾à°Ÿà°²à°¨à± à°šà±‚à°¡à°‚à°¡à°¿'
+                  ? 'లాగిన్ లేకుండా పాటలను చూడండి'
                   : 'Browse songs without signing in'}
               </Link>
             </div>
@@ -418,7 +418,7 @@ export default function LoginPage() {
         </p>
 
         <p className="mt-2 text-center text-xs text-white/60">
-          Â© 2026 WorshipVerse Â· SHARON A.G. CHURCH
+          © 2026 WorshipVerse · SHARON A.G. CHURCH
         </p>
       </div>
     </main>
