@@ -1,9 +1,18 @@
 
-import { redirect } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-
-export const instant = false;
+import {
+  CirclePlus,
+  Music2,
+  ArrowUpRight,
+  ChevronRight,
+  Library,
+  Sparkles,
+  CalendarDays,
+  ArrowRight,
+} from 'lucide-react';
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -17,25 +26,28 @@ export default async function AdminPage() {
 
   const role = user.app_metadata?.role;
 
-  console.log('ADMIN DEBUG:', {
-    email: user.email,
-    role: user.app_metadata?.role,
-  });
-
   if (role !== 'admin' && role !== 'super_admin') {
     redirect('/');
   }
 
-  
   const [
     { count: totalSongs },
     { count: teluguSongs },
     { count: englishSongs },
     { data: recentSongs, error: songsError },
   ] = await Promise.all([
-    supabase.from('songs').select('*', { count: 'exact', head: true }),
-    supabase.from('songs').select('*', { count: 'exact', head: true }).eq('language', 'te'),
-    supabase.from('songs').select('*', { count: 'exact', head: true }).eq('language', 'en'),
+    supabase.from('songs').select('*', {
+      count: 'exact',
+      head: true,
+    }),
+    supabase
+      .from('songs')
+      .select('*', { count: 'exact', head: true })
+      .eq('language', 'te'),
+    supabase
+      .from('songs')
+      .select('*', { count: 'exact', head: true })
+      .eq('language', 'en'),
     supabase
       .from('songs')
       .select('id, title, language, created_at')
@@ -44,223 +56,320 @@ export default async function AdminPage() {
   ]);
 
   const stats = [
-    { label: 'Total Songs', value: totalSongs ?? 0, icon: '♫' },
-    { label: 'Telugu Songs', value: teluguSongs ?? 0, icon: 'తె' },
-    { label: 'English Songs', value: englishSongs ?? 0, icon: 'En' },
+    {
+      label: 'Total Songs',
+      value: totalSongs ?? 0,
+      subtitle: 'Songs in your collection',
+      icon: Library,
+      iconStyle: 'bg-[#EEE5F7] text-[#7043A1]',
+      accent: 'bg-[#7043A1]',
+    },
+    {
+      label: 'Telugu Songs',
+      value: teluguSongs ?? 0,
+      subtitle: 'Telugu worship lyrics',
+      icon: Music2,
+      iconStyle: 'bg-[#F7ECD5] text-[#A17B38]',
+      accent: 'bg-[#D8B66C]',
+    },
+    {
+      label: 'English Songs',
+      value: englishSongs ?? 0,
+      subtitle: 'English worship lyrics',
+      icon: Music2,
+      iconStyle: 'bg-[#E7EEF8] text-[#5277A2]',
+      accent: 'bg-[#7799C1]',
+    },
   ];
 
   return (
-    <main className="min-h-screen bg-[#FAF8F4] text-[#24103F]">
-      <div className="flex min-h-screen">
-        {/* Sidebar */}
-        <aside className="hidden w-64 shrink-0 flex-col bg-[#24103F] p-6 text-white md:flex">
-          <Link href="/admin" className="block">
-            <div className="text-2xl font-extrabold tracking-[0.15em]">
-              WORSHIP<span className="text-[#D8B66C]">VERSE</span>
-            </div>
-            <p className="mt-2 text-xs tracking-[0.2em] text-[#D8B66C]">
-              SHARON A.G. CHURCH
+    <div className="min-w-0 text-white">
+      {/* Dashboard toolbar */}
+      <header className="border-b border-white/10 bg-[#24103F]/55 px-4 py-5 backdrop-blur-xl sm:px-7">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#D8B66C]">
+              WorshipVerse / Administration
             </p>
+
+            <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-[29px]">
+              Dashboard
+            </h1>
+
+            <p className="mt-1 text-xs text-white/50 sm:text-sm">
+              Manage your worship library in one place.
+            </p>
+          </div>
+
+          <Link
+            href="/admin/songs/new"
+            className="inline-flex items-center gap-2 rounded-xl bg-[#D8B66C] px-4 py-3 text-xs font-bold text-[#24103F] shadow-lg transition hover:bg-[#E9CB89] sm:text-sm"
+          >
+            <CirclePlus size={17} />
+            Publish Song
           </Link>
+        </div>
+      </header>
 
-          <div className="mt-12">
-            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-white/40">
-              Workspace
-            </p>
+      <div className="mx-auto max-w-[1180px] space-y-7 px-4 py-6 sm:px-7 sm:py-8">
+        {/* Welcome */}
+        <section className="relative overflow-hidden rounded-2xl border border-[#D8B66C]/20 bg-gradient-to-r from-[#39205C] via-[#321950] to-[#27133F] p-5 shadow-xl sm:p-7">
+          <div className="pointer-events-none absolute -right-12 -top-16 h-44 w-44 rounded-full bg-[#D8B66C]/10 blur-3xl" />
 
-            <nav className="space-y-2">
-              <Link
-                href="/admin"
-                className="flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 font-medium text-[#E8CF96]"
-              >
-                <span>▦</span> Dashboard
-              </Link>
+          <div className="relative flex items-center justify-between gap-5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[#D8B66C]">
+                <Sparkles size={15} />
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em]">
+                  WorshipVerse Studio
+                </span>
+              </div>
+
+              <h2 className="mt-3 text-xl font-bold sm:text-2xl">
+                Welcome back!
+              </h2>
+
+              <p className="mt-2 max-w-lg text-xs leading-6 text-white/65 sm:text-sm">
+                Your space to publish worship lyrics,
+                organize songs and inspire your community.
+              </p>
 
               <Link
                 href="/admin/songs"
-                className="flex items-center gap-3 rounded-xl px-4 py-3 text-white/75 transition hover:bg-white/10"
+                className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#F0D79B] hover:text-white"
               >
-                <span>♫</span> Manage Songs
+                Explore Library
+                <ArrowRight size={15} />
               </Link>
-
-              <Link
-                href="/admin/songs/new"
-                className="flex items-center gap-3 rounded-xl px-4 py-3 text-white/75 transition hover:bg-white/10"
-              >
-                <span>＋</span> Add New Song
-              </Link>
-            </nav>
-          </div>
-
-          <div className="mt-auto border-t border-white/10 pt-6">
-            <p className="break-all text-xs text-white/60">{user.email}</p>
-            <p className="mt-2 text-xs text-[#D8B66C]">Administrator</p>
-            <Link
-              href="/"
-              className="mt-5 block text-sm text-white/70 hover:text-white"
-            >
-              ← Back to WorshipVerse
-            </Link>
-          </div>
-        </aside>
-
-        {/* Main content */}
-        <section className="min-w-0 flex-1">
-          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E9E1D3] bg-white px-5 py-5 sm:px-8">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#A17B39]">
-                WorshipVerse Administration
-              </p>
-              <h1 className="mt-1 text-xl font-bold text-[#32165C] sm:text-2xl">
-                Dashboard
-              </h1>
             </div>
+
+            <div className="relative hidden h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-[#D8B66C]/30 lg:block">
+              <Image
+                src="/images/worship-instruments.jpg"
+                alt="Worship instruments"
+                fill
+                sizes="96px"
+                className="object-cover"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Statistics */}
+        <section>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-bold">
+                Library Overview
+              </h2>
+              <p className="mt-1 text-xs text-white/45">
+                Live statistics from your song collection.
+              </p>
+            </div>
+
+            <span className="inline-flex items-center gap-2 text-[11px] text-[#D8B66C]/80">
+              <Library size={14} />
+              Song Library
+            </span>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            {stats.map((stat) => {
+              const Icon = stat.icon;
+
+              return (
+                <div
+                  key={stat.label}
+                  className="relative overflow-hidden rounded-2xl border border-[#EAE2D7] bg-[#FAF8F4] p-5 text-[#24103F] shadow-lg transition hover:-translate-y-0.5"
+                >
+                  <div
+                    className={`absolute left-0 top-0 h-1 w-full ${stat.accent}`}
+                  />
+
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold text-[#82758C]">
+                        {stat.label}
+                      </p>
+
+                      <p className="mt-3 text-3xl font-extrabold tracking-tight text-[#32165C]">
+                        {stat.value}
+                      </p>
+                    </div>
+
+                    <div
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${stat.iconStyle}`}
+                    >
+                      <Icon size={20} strokeWidth={1.8} />
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-[11px] text-gray-500">
+                    {stat.subtitle}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Quick actions */}
+        <section>
+          <h2 className="mb-4 text-lg font-bold">
+            Quick Actions
+          </h2>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Link
+              href="/admin/songs"
+              className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-4 transition hover:border-[#D8B66C]/35 hover:bg-white/[0.10]"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D8B66C]/15 text-[#D8B66C]">
+                <Music2 size={21} />
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold">
+                  Manage Songs
+                </h3>
+                <p className="mt-1 text-xs text-white/45">
+                  Browse and organize your library.
+                </p>
+              </div>
+
+              <ChevronRight
+                size={17}
+                className="shrink-0 text-white/35 transition group-hover:translate-x-1"
+              />
+            </Link>
 
             <Link
               href="/admin/songs/new"
-              className="rounded-xl bg-[#32165C] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#24103F]"
+              className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-4 transition hover:border-[#D8B66C]/35 hover:bg-white/[0.10]"
             >
-              + Add New Song
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D8B66C]/15 text-[#D8B66C]">
+                <CirclePlus size={21} />
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold">
+                  Publish Song
+                </h3>
+                <p className="mt-1 text-xs text-white/45">
+                  Add new worship lyrics.
+                </p>
+              </div>
+
+              <ChevronRight
+                size={17}
+                className="shrink-0 text-white/35 transition group-hover:translate-x-1"
+              />
             </Link>
-          </header>
-
-          <div className="mx-auto max-w-7xl space-y-8 p-5 sm:p-8">
-            {/* Welcome */}
-            <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#32165C] to-[#24103F] p-7 text-white shadow-lg sm:p-10">
-              <p className="text-sm font-medium tracking-wide text-[#E8CF96]">
-                ADMINISTRATOR WORKSPACE
-              </p>
-              <h2 className="mt-3 text-3xl font-bold sm:text-4xl">
-                Welcome back!
-              </h2>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-white/70">
-                Manage your worship song library, publish lyrics and help
-                your church community worship together.
-              </p>
-
-              <div className="mt-7 flex flex-wrap gap-3">
-                <Link
-                  href="/admin/songs/new"
-                  className="rounded-xl bg-[#D8B66C] px-5 py-3 text-sm font-bold text-[#24103F] hover:bg-[#E8CF96]"
-                >
-                  Publish a Song
-                </Link>
-                <Link
-                  href="/admin/songs"
-                  className="rounded-xl border border-white/30 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
-                >
-                  View Song Library
-                </Link>
-              </div>
-            </div>
-
-            {/* Statistics */}
-            <div>
-              <div className="mb-4">
-                <h2 className="text-lg font-bold text-[#32165C]">
-                  Library Overview
-                </h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  Your worship song collection at a glance.
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {stats.map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="rounded-2xl border border-[#EDE5D8] bg-white p-6 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-500">
-                        {stat.label}
-                      </p>
-                      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F4EFF9] font-bold text-[#A17B39]">
-                        {stat.icon}
-                      </span>
-                    </div>
-                    <p className="mt-4 text-4xl font-extrabold text-[#32165C]">
-                      {stat.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent Songs */}
-            <div className="overflow-hidden rounded-2xl border border-[#EDE5D8] bg-white shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F0EBE3] p-6">
-                <div>
-                  <h2 className="text-lg font-bold text-[#32165C]">
-                    Recently Published
-                  </h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Your latest worship songs.
-                  </p>
-                </div>
-                <Link
-                  href="/admin/songs"
-                  className="text-sm font-semibold text-[#8B6B35] hover:underline"
-                >
-                  Manage All →
-                </Link>
-              </div>
-
-              {songsError ? (
-                <p className="p-6 text-sm text-red-600">
-                  Unable to load songs. Please refresh the page.
-                </p>
-              ) : recentSongs?.length ? (
-                <div className="divide-y divide-[#F0EBE3]">
-                  {recentSongs.map((song) => (
-                    <div
-                      key={song.id}
-                      className="flex flex-wrap items-center justify-between gap-3 p-5"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F4EFF9] text-xl text-[#32165C]">
-                          ♫
-                        </div>
-                        <div>
-                          <p className="font-semibold text-[#32165C]">
-                            {song.title}
-                          </p>
-                          <p className="mt-1 text-xs text-gray-500">
-                            {song.language === 'te' ? 'Telugu' : 'English'}
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-400">
-                        {new Date(song.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-10 text-center">
-                  <div className="text-4xl text-[#D8B66C]">♫</div>
-                  <h3 className="mt-3 font-bold text-[#32165C]">
-                    Your library is ready
-                  </h3>
-                  <p className="mt-2 text-sm text-gray-500">
-                    Publish your first Telugu or English worship song.
-                  </p>
-                  <Link
-                    href="/admin/songs/new"
-                    className="mt-5 inline-block rounded-xl bg-[#32165C] px-5 py-3 text-sm font-semibold text-white"
-                  >
-                    + Add Your First Song
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            <footer className="pb-4 text-center text-xs text-gray-400">
-              WorshipVerse · Every Song, A Prayer. Every Verse, A Praise.
-            </footer>
           </div>
         </section>
+
+        {/* Recent songs */}
+        <section className="overflow-hidden rounded-2xl border border-[#EAE2D7] bg-[#FAF8F4] text-[#24103F] shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EAE3DA] px-5 py-5 sm:px-6">
+            <div>
+              <h2 className="text-lg font-bold text-[#32165C]">
+                Recently Published
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Your five latest worship songs.
+              </p>
+            </div>
+
+            <Link
+              href="/admin/songs"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#F1E6CC] px-3 py-2 text-xs font-semibold text-[#80601F] hover:bg-[#EAD9B3]"
+            >
+              View All
+              <ArrowUpRight size={14} />
+            </Link>
+          </div>
+
+          {songsError ? (
+            <p role="alert" className="p-6 text-sm text-red-700">
+              Unable to load songs. Please refresh the page.
+            </p>
+          ) : recentSongs?.length ? (
+            <div className="divide-y divide-[#EAE3DA]">
+              {recentSongs.map((song) => (
+                <div
+                  key={song.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 transition hover:bg-white sm:px-6"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-[#E8DFD1]">
+                      <Image
+                        src="/images/worship-instruments.jpg"
+                        alt="Worship song artwork"
+                        fill
+                        sizes="44px"
+                        className="object-cover"
+                      />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-semibold text-[#32165C]">
+                        {song.title}
+                      </p>
+
+                      <span className="mt-1 inline-block rounded-full bg-[#F1E6CC] px-2.5 py-0.5 text-[10px] font-semibold text-[#80601F]">
+                        {song.language === 'te'
+                          ? 'తెలుగు'
+                          : 'English'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                    <CalendarDays size={13} />
+
+                    {song.created_at
+                      ? new Date(
+                          song.created_at
+                        ).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          timeZone: 'UTC',
+                        })
+                      : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-9 text-center">
+              <Music2
+                size={30}
+                className="mx-auto text-[#A17B38]"
+              />
+
+              <h3 className="mt-3 font-bold text-[#32165C]">
+                Your Library Is Ready
+              </h3>
+
+              <p className="mt-2 text-sm text-gray-500">
+                Publish your first Telugu or English worship song.
+              </p>
+
+              <Link
+                href="/admin/songs/new"
+                className="mt-5 inline-flex rounded-xl bg-[#32165C] px-5 py-3 text-sm font-semibold text-white hover:bg-[#48247C]"
+              >
+                Publish Your First Song
+              </Link>
+            </div>
+          )}
+        </section>
+
+        <footer className="pb-4 text-center text-[11px] text-white/35">
+          WorshipVerse · Every Song, A Prayer. Every Verse, A Praise.
+        </footer>
       </div>
-    </main>
+    </div>
   );
 }

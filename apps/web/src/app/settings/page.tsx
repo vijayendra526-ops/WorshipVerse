@@ -1,7 +1,9 @@
-
+﻿
 "use client";
 
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -13,17 +15,30 @@ export default function SettingsPage() {
   const [newEmail, setNewEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] =
+    useState(false);
+
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    async function loadAccount() {
-      const { data, error } = await supabase.auth.getUser();
+    let active = true;
 
-      if (error || !data.user) {
+    async function loadAccount() {
+      const {
+        data,
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (!active) return;
+
+      if (authError || !data.user) {
         router.replace("/login");
         return;
       }
@@ -33,36 +48,60 @@ export default function SettingsPage() {
     }
 
     loadAccount();
+
+    return () => {
+      active = false;
+    };
   }, [router, supabase]);
 
-  async function updateEmail(e: React.FormEvent<HTMLFormElement>) {
+  async function updateEmail(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (savingEmail) return;
+
     setMessage("");
     setError("");
 
-    if (!newEmail.trim()) {
+    const requestedEmail = newEmail.trim();
+
+    if (!requestedEmail) {
       setError("Please enter your new email address.");
+      return;
+    }
+
+    if (requestedEmail.toLowerCase() === email.toLowerCase()) {
+      setError("Please enter a different email address.");
       return;
     }
 
     setSavingEmail(true);
 
-    const { error } = await supabase.auth.updateUser({
-      email: newEmail.trim(),
-    });
+    try {
+      const { error: updateError } =
+        await supabase.auth.updateUser({
+          email: requestedEmail,
+        });
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setMessage("Confirmation email sent. Please check your inbox to complete the email change.");
-      setNewEmail("");
+      if (updateError) {
+        setError(updateError.message);
+      } else {
+        setMessage(
+          "Email change requested. Please check your inbox for the confirmation link and follow the instructions."
+        );
+        setNewEmail("");
+      }
+    } catch {
+      setError("Unable to update email. Please try again.");
+    } finally {
+      setSavingEmail(false);
     }
-
-    setSavingEmail(false);
   }
 
-  async function updatePassword(e: React.FormEvent<HTMLFormElement>) {
+  async function updatePassword(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (savingPassword) return;
+
     setMessage("");
     setError("");
 
@@ -78,136 +117,315 @@ export default function SettingsPage() {
 
     setSavingPassword(true);
 
-    const { error } = await supabase.auth.updateUser({
-      password,
-    });
+    try {
+      const { error: updateError } =
+        await supabase.auth.updateUser({
+          password,
+        });
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setMessage("Password updated successfully.");
-      setPassword("");
-      setConfirmPassword("");
+      if (updateError) {
+        setError(updateError.message);
+      } else {
+        setMessage("Password updated successfully.");
+        setPassword("");
+        setConfirmPassword("");
+        setShowPassword(false);
+        setShowConfirmPassword(false);
+      }
+    } catch {
+      setError("Unable to update password. Please try again.");
+    } finally {
+      setSavingPassword(false);
     }
-
-    setSavingPassword(false);
   }
+
+  const backgroundStyle = {
+    backgroundImage:
+      "linear-gradient(rgba(36, 16, 63, 0.78), rgba(36, 16, 63, 0.88)), url('/images/worship-background.jpg')",
+  };
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#FAF8F4] p-8 text-[#32165C]">
+      <main
+        className="flex min-h-screen items-center justify-center bg-cover bg-center text-white"
+        style={backgroundStyle}
+      >
         Loading account settings...
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#FAF8F4] px-4 py-10">
-      <div className="mx-auto max-w-2xl">
-        <button
-          onClick={() => router.back()}
-          className="mb-6 text-sm font-medium text-[#32165C] hover:underline"
-        >
-          ← Back
-        </button>
+    <main
+      className="min-h-screen bg-fixed bg-cover bg-center bg-no-repeat text-white"
+      style={backgroundStyle}
+    >
+      <header className="border-b border-white/15 bg-[#24103F]/75 px-5 py-4 backdrop-blur-lg">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <Link href="/" className="text-xl font-bold">
+            <span className="text-[#D8B66C]">
+              Worship
+            </span>
+            Verse
+          </Link>
 
-        <h1 className="mb-2 text-3xl font-bold text-[#32165C]">
-          Account Settings
-        </h1>
-        <p className="mb-8 text-gray-600">
-          Manage your WorshipVerse account information and security.
-        </p>
+          <Link
+            href="/profile"
+            className="rounded-xl border border-[#D8B66C]/50 px-4 py-2 text-sm font-semibold text-[#F1D99D] transition hover:bg-white/10"
+          >
+            My Profile
+          </Link>
+        </div>
+      </header>
+
+      <section className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+        <div className="mb-7">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#D8B66C]">
+            WorshipVerse Account
+          </p>
+
+          <h1 className="mt-2 text-2xl font-bold sm:text-3xl">
+            Account Settings
+          </h1>
+
+          <p className="mt-2 text-sm text-white/75">
+            Manage your account information and security.
+          </p>
+        </div>
 
         {message && (
-          <div className="mb-5 rounded-lg bg-green-100 p-4 text-sm text-green-800">
+          <div
+            role="status"
+            className="mb-5 rounded-xl border border-[#D8B66C]/50 bg-[#FAF8F4] p-4 text-sm text-[#32165C]"
+          >
             {message}
           </div>
         )}
 
         {error && (
-          <div className="mb-5 rounded-lg bg-red-100 p-4 text-sm text-red-700">
+          <div
+            role="alert"
+            className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
             {error}
           </div>
         )}
 
-        <section className="mb-6 rounded-xl border border-[#E7DCC7] bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-semibold text-[#32165C]">
-            Account Information
-          </h2>
+        <div className="space-y-5">
+          <section className="rounded-2xl border border-[#E8E0D2]/70 bg-[#FAF8F4]/95 p-5 text-[#24103F] shadow-xl sm:p-7">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F1E6CC] text-xl text-[#80601F]">
+                @
+              </div>
 
-          <label className="mb-2 block text-sm font-medium text-gray-700">
-            Current email address
-          </label>
-          <input
-            type="email"
-            value={email}
-            readOnly
-            className="w-full rounded-lg border border-gray-300 bg-gray-100 px-4 py-3 text-gray-700"
-          />
-        </section>
+              <div>
+                <h2 className="text-lg font-bold text-[#32165C]">
+                  Account Information
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Your registered email address
+                </p>
+              </div>
+            </div>
 
-        <section className="mb-6 rounded-xl border border-[#E7DCC7] bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-semibold text-[#32165C]">
-            Change Email Address
-          </h2>
+            <label
+              htmlFor="current-email"
+              className="mb-2 block text-sm font-semibold"
+            >
+              Current Email
+            </label>
 
-          <form onSubmit={updateEmail} className="space-y-4">
             <input
+              id="current-email"
               type="email"
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="Enter new email address"
-              required
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-[#32165C]"
+              value={email}
+              readOnly
+              className="w-full rounded-xl border border-[#E9E1D3] bg-gray-100 px-4 py-3 text-sm text-gray-600"
             />
+          </section>
 
-            <button
-              type="submit"
-              disabled={savingEmail}
-              className="rounded-lg bg-[#32165C] px-5 py-3 font-medium text-white hover:bg-[#24103F] disabled:opacity-50"
-            >
-              {savingEmail ? "Sending..." : "Update Email"}
-            </button>
-          </form>
-          <p className="mt-3 text-xs text-gray-500">
-            A confirmation email will be sent to your new address. Please check your inbox to complete the change.
-          </p>
-        </section>
+          <section className="rounded-2xl border border-[#E8E0D2]/70 bg-[#FAF8F4]/95 p-5 text-[#24103F] shadow-xl sm:p-7">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F1E6CC] text-xl text-[#80601F]">
+                âœ‰
+              </div>
 
-        <section className="rounded-xl border border-[#E7DCC7] bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-semibold text-[#32165C]">
-            Change Password
-          </h2>
+              <div>
+                <h2 className="text-lg font-bold text-[#32165C]">
+                  Change Email Address
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Update the email linked to your account
+                </p>
+              </div>
+            </div>
 
-          <form onSubmit={updatePassword} className="space-y-4">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="New password (minimum 8 characters)"
-              required
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-[#32165C]"
-            />
+            <form onSubmit={updateEmail} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="new-email"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  New Email Address
+                </label>
 
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm new password"
-              required
-              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-[#32165C]"
-            />
+                <input
+                  id="new-email"
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="Enter your new email"
+                  autoComplete="email"
+                  required
+                  className="w-full rounded-xl border border-[#E9E1D3] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#65409A] focus:ring-2 focus:ring-[#65409A]/15"
+                />
+              </div>
 
-            <button
-              type="submit"
-              disabled={savingPassword}
-              className="rounded-lg bg-[#32165C] px-5 py-3 font-medium text-white hover:bg-[#24103F] disabled:opacity-50"
-            >
-              {savingPassword ? "Updating..." : "Update Password"}
-            </button>
-          </form>
-        </section>
-      </div>
+              <button
+                type="submit"
+                disabled={savingEmail || savingPassword}
+                className="rounded-xl bg-[#32165C] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#48247C] disabled:opacity-50"
+              >
+                {savingEmail ? "Sending..." : "Update Email"}
+              </button>
+            </form>
+
+            <p className="mt-4 text-xs leading-5 text-gray-500">
+              Supabase may require confirmation through your
+              current and new email addresses, depending on
+              your project's authentication settings.
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-[#E8E0D2]/70 bg-[#FAF8F4]/95 p-5 text-[#24103F] shadow-xl sm:p-7">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#F1E6CC] text-xl text-[#80601F]">
+                ðŸ”’
+              </div>
+
+              <div>
+                <h2 className="text-lg font-bold text-[#32165C]">
+                  Change Password
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Keep your account secure
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={updatePassword} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="new-password"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  New Password
+                </label>
+
+                <div className="relative">
+                  <input
+                    id="new-password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Minimum 8 characters"
+                    minLength={8}
+                    autoComplete="new-password"
+                    required
+                    className="w-full rounded-xl border border-[#E9E1D3] bg-white px-4 py-3 pr-20 text-sm outline-none transition focus:border-[#65409A] focus:ring-2 focus:ring-[#65409A]/15"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={
+                      showPassword
+                        ? "Hide new password"
+                        : "Show new password"
+                    }
+                    className="absolute inset-y-0 right-3 text-xs font-semibold text-[#65409A] hover:underline"
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="confirm-password"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Confirm New Password
+                </label>
+
+                <div className="relative">
+                  <input
+                    id="confirm-password"
+                    type={
+                      showConfirmPassword ? "text" : "password"
+                    }
+                    value={confirmPassword}
+                    onChange={(e) =>
+                      setConfirmPassword(e.target.value)
+                    }
+                    placeholder="Re-enter your new password"
+                    minLength={8}
+                    autoComplete="new-password"
+                    required
+                    className="w-full rounded-xl border border-[#E9E1D3] bg-white px-4 py-3 pr-20 text-sm outline-none transition focus:border-[#65409A] focus:ring-2 focus:ring-[#65409A]/15"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowConfirmPassword(!showConfirmPassword)
+                    }
+                    aria-label={
+                      showConfirmPassword
+                        ? "Hide confirmation password"
+                        : "Show confirmation password"
+                    }
+                    className="absolute inset-y-0 right-3 text-xs font-semibold text-[#65409A] hover:underline"
+                  >
+                    {showConfirmPassword ? "Hide" : "Show"}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingPassword || savingEmail}
+                className="rounded-xl bg-[#32165C] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#48247C] disabled:opacity-50"
+              >
+                {savingPassword
+                  ? "Updating..."
+                  : "Update Password"}
+              </button>
+            </form>
+
+            <p className="mt-4 text-xs leading-5 text-gray-500">
+              Choose a strong, unique password with at least
+              8 characters. Supabase may require additional
+              verification for sensitive account changes.
+            </p>
+          </section>
+        </div>
+
+        <div className="mt-7 text-center">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="text-sm font-semibold text-[#F1D99D] hover:underline"
+          >
+            â† Back
+          </button>
+        </div>
+      </section>
+
+      <footer className="mt-12 border-t border-white/15 bg-[#24103F]/70 px-5 py-5 text-center text-xs text-white/65">
+        Â© 2026 WorshipVerse
+      </footer>
     </main>
   );
 }
+
