@@ -1,4 +1,4 @@
-﻿
+
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -46,7 +46,7 @@ const installationSteps = [
     number: '04',
     title: 'Open WorshipVerse',
     description:
-      'Complete installation and start exploring worship songs.',
+      'If updating from v1.0.0, install without uninstalling the existing app. Open WorshipVerse and enjoy your songs.',
   },
 ];
 
@@ -124,7 +124,7 @@ export default function DownloadPage() {
               </a>
 
               <p className="mt-3 text-xs text-white/60">
-                Android APK · Version 1.0.0
+                Android APK · Version 1.1.0
               </p>
 
               <p className="mt-1 text-xs text-white/50">
