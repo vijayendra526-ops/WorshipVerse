@@ -1,0 +1,286 @@
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { supabase } from '../lib/supabase';
+
+type SettingsScreenProps = {
+  onBack: () => void;
+};
+
+type Language = 'te' | 'en';
+
+const COLORS = {
+  deep: '#24103F',
+  purple: '#32165C',
+  gold: '#D8B66C',
+  cream: '#FAF8F4',
+  white: '#FFFFFF',
+  ink: '#2B2037',
+  muted: '#77717F',
+  border: '#EAE2D8',
+  danger: '#A32626',
+};
+
+const LABELS = {
+  te: {
+    back: 'వెనక్కి',
+    eyebrow: 'మీ ఖాతా · భద్రత',
+    title: 'సెట్టింగ్స్',
+    subtitle: 'మీ WorshipVerse ఖాతా వివరాలు మరియు భద్రతను నిర్వహించండి.',
+    account: 'ఖాతా వివరాలు',
+    current: 'ప్రస్తుత ఇమెయిల్',
+    emailTitle: 'ఇమెయిల్ మార్చండి',
+    emailPlaceholder: 'కొత్త ఇమెయిల్ చిరునామా',
+    emailButton: 'ఇమెయిల్ అప్‌డేట్ చేయండి',
+    emailBusy: 'పంపిస్తోంది...',
+    emailHelp: 'ఇమెయిల్ మార్పును పూర్తి చేయడానికి నిర్ధారణ అవసరం కావచ్చు. మీ ఇన్‌బాక్స్‌ను తనిఖీ చేయండి.',
+    passwordTitle: 'పాస్‌వర్డ్ మార్చండి',
+    newPassword: 'కొత్త పాస్‌వర్డ్ (కనీసం 8 అక్షరాలు)',
+    confirmPassword: 'కొత్త పాస్‌వర్డ్‌ను నిర్ధారించండి',
+    passwordButton: 'పాస్‌వర్డ్ అప్‌డేట్ చేయండి',
+    passwordBusy: 'అప్‌డేట్ అవుతోంది...',
+    passwordHelp: 'మీ పాస్‌వర్డ్‌ను ఎవరితోనూ పంచుకోకండి.',
+    footer: 'ప్రతి పాట ఒక ప్రార్థన · ప్రతి వచనం ఒక స్తుతి',
+    loginTitle: 'లాగిన్ అవసరం',
+    loginDetail: 'ఖాతా సెట్టింగ్స్ చూడటానికి లాగిన్ అవ్వండి.',
+    emailMissing: 'దయచేసి కొత్త ఇమెయిల్ నమోదు చేయండి.',
+    emailInvalid: 'సరైన ఇమెయిల్ చిరునామా నమోదు చేయండి.',
+    emailSame: 'కొత్త ఇమెయిల్ ప్రస్తుత ఇమెయిల్‌తో సమానంగా ఉంది.',
+    emailSuccess: 'ఇమెయిల్ మార్పు అభ్యర్థన పంపబడింది. అవసరమైతే నిర్ధారణ ఇమెయిల్‌ను తనిఖీ చేయండి.',
+    passwordShort: 'పాస్‌వర్డ్ కనీసం 8 అక్షరాలు ఉండాలి.',
+    passwordMismatch: 'రెండు పాస్‌వర్డ్‌లు ఒకేలా లేవు.',
+    passwordSuccess: 'పాస్‌వర్డ్ విజయవంతంగా మార్చబడింది.',
+    loading: 'సెట్టింగ్స్ లోడ్ అవుతున్నాయి...',
+    errorGeneric: 'ఏదో సమస్య వచ్చింది. మళ్లీ ప్రయత్నించండి.',
+    ok: 'సరే',
+  },
+  en: {
+    back: 'Back',
+    eyebrow: 'YOUR ACCOUNT · SECURITY',
+    title: 'Settings',
+    subtitle: 'Manage your WorshipVerse account details and security.',
+    account: 'Account information',
+    current: 'Current email address',
+    emailTitle: 'Change email address',
+    emailPlaceholder: 'Enter new email address',
+    emailButton: 'Update Email',
+    emailBusy: 'Sending...',
+    emailHelp: 'A confirmation may be required to finish changing your email. Check your inbox.',
+    passwordTitle: 'Change password',
+    newPassword: 'New password (minimum 8 characters)',
+    confirmPassword: 'Confirm new password',
+    passwordButton: 'Update Password',
+    passwordBusy: 'Updating...',
+    passwordHelp: 'Never share your password with anyone.',
+    footer: 'Every Song, A Prayer. Every Verse, A Praise.',
+    loginTitle: 'Sign in required',
+    loginDetail: 'Please sign in to access account settings.',
+    emailMissing: 'Please enter your new email address.',
+    emailInvalid: 'Please enter a valid email address.',
+    emailSame: 'Your new email is the same as your current email.',
+    emailSuccess: 'Email change requested. Check your inbox for a confirmation if required.',
+    passwordShort: 'Password must be at least 8 characters.',
+    passwordMismatch: 'Passwords do not match.',
+    passwordSuccess: 'Password updated successfully.',
+    loading: 'Loading account settings...',
+    errorGeneric: 'Something went wrong. Please try again.',
+    ok: 'OK',
+  },
+} as const;
+
+export default function SettingsScreen({ onBack }: SettingsScreenProps) {
+  const [language, setLanguage] = useState<Language>('te');
+  const t = LABELS[language];
+
+  const [email, setEmail] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const busy = savingEmail || savingPassword;
+
+  useEffect(() => {
+    let active = true;
+    async function loadAccount() {
+      try {
+        const { data, error: authError } = await supabase.auth.getUser();
+        if (!active) return;
+        if (authError || !data.user) {
+          Alert.alert('Sign in required', 'Please sign in to access account settings.', [
+            { text: 'OK', onPress: onBack },
+          ]);
+          return;
+        }
+        setEmail(data.user.email ?? '');
+      } catch (caught) {
+        if (active) setError(caught instanceof Error ? caught.message : 'Unable to load account.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void loadAccount();
+    return () => { active = false; };
+  }, [onBack]);
+
+  async function updateEmail() {
+    if (busy) return;
+    setMessage('');
+    setError('');
+    const trimmedEmail = newEmail.trim();
+    if (!trimmedEmail) { setError(t.emailMissing); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) { setError(t.emailInvalid); return; }
+    if (trimmedEmail.toLowerCase() === email.toLowerCase()) { setError(t.emailSame); return; }
+    setSavingEmail(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ email: trimmedEmail });
+      if (updateError) throw updateError;
+      setMessage(t.emailSuccess);
+      setNewEmail('');
+      // Supabase may require email confirmation; do not change displayed current email yet.
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t.errorGeneric);
+    } finally {
+      setSavingEmail(false);
+    }
+  }
+
+  async function updatePassword() {
+    if (busy) return;
+    setMessage('');
+    setError('');
+    if (password.length < 8) { setError(t.passwordShort); return; }
+    if (password !== confirmPassword) { setError(t.passwordMismatch); return; }
+    setSavingPassword(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      setMessage(t.passwordSuccess);
+      setPassword('');
+      setConfirmPassword('');
+      Alert.alert(t.ok, t.passwordSuccess);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t.errorGeneric);
+    } finally {
+      setSavingPassword(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.purple} />
+        <Text style={styles.loadingText}>{t.loading}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton} accessibilityRole="button">
+          <Text style={styles.backText}>‹ {t.back}</Text>
+        </TouchableOpacity>
+        <Text style={styles.brand}>WorshipVerse</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.intro}>
+          <Text style={styles.eyebrow}>{t.eyebrow}</Text>
+          <Text style={styles.title}>{t.title}</Text>
+          <Text style={styles.subtitle}>{t.subtitle}</Text>
+          <View style={styles.languageSwitch}>
+            <TouchableOpacity accessibilityRole="button" onPress={() => setLanguage('te')} style={[styles.languageButton, language === 'te' && styles.languageActive]}>
+              <Text style={[styles.languageText, language === 'te' && styles.languageActiveText]}>తెలుగు</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" onPress={() => setLanguage('en')} style={[styles.languageButton, language === 'en' && styles.languageActive]}>
+              <Text style={[styles.languageText, language === 'en' && styles.languageActiveText]}>English</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {!!message && <View style={styles.successBox}><Text style={styles.successText}>{message}</Text></View>}
+        {!!error && <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View>}
+
+        <View style={styles.card}>
+          <View style={styles.cardTitleRow}><View style={styles.iconCircle}><Text style={styles.iconText}>♙</Text></View><Text style={styles.sectionTitle}>{t.account}</Text></View>
+          <Text style={styles.label}>{t.current}</Text>
+          <TextInput value={email} editable={false} selectTextOnFocus={false} style={styles.readOnlyInput} accessibilityLabel={t.current} />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardTitleRow}><View style={styles.iconCircle}><Text style={styles.iconText}>✉</Text></View><Text style={styles.sectionTitle}>{t.emailTitle}</Text></View>
+          <TextInput value={newEmail} onChangeText={setNewEmail} placeholder={t.emailPlaceholder} placeholderTextColor="#918997" keyboardType="email-address" autoComplete="email" autoCapitalize="none" autoCorrect={false} style={styles.input} accessibilityLabel={t.emailPlaceholder} />
+          <TouchableOpacity disabled={busy} onPress={() => { void updateEmail(); }} style={[styles.primaryButton, busy && styles.disabledButton]} accessibilityRole="button">
+            {savingEmail ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryButtonText}>{t.emailButton}</Text>}
+          </TouchableOpacity>
+          <Text style={styles.helperText}>{t.emailHelp}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardTitleRow}><View style={styles.iconCircle}><Text style={styles.iconText}>✦</Text></View><Text style={styles.sectionTitle}>{t.passwordTitle}</Text></View>
+          <TextInput value={password} onChangeText={setPassword} placeholder={t.newPassword} placeholderTextColor="#918997" secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" style={styles.input} accessibilityLabel={t.newPassword} />
+          <TextInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder={t.confirmPassword} placeholderTextColor="#918997" secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password" style={styles.input} accessibilityLabel={t.confirmPassword} />
+          <TouchableOpacity disabled={busy} onPress={() => { void updatePassword(); }} style={[styles.primaryButton, busy && styles.disabledButton]} accessibilityRole="button">
+            {savingPassword ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.primaryButtonText}>{t.passwordButton}</Text>}
+          </TouchableOpacity>
+          <Text style={styles.helperText}>{t.passwordHelp}</Text>
+        </View>
+        <View style={styles.footer}><Text style={styles.footerName}>WorshipVerse</Text><Text style={styles.footerTagline}>{t.footer}</Text><Text style={styles.church}>SHARON A.G. CHURCH</Text></View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.cream },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.cream },
+  loadingText: { marginTop: 12, color: COLORS.purple, fontSize: 14 },
+  header: { backgroundColor: COLORS.deep, minHeight: 66, paddingHorizontal: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  backButton: { paddingVertical: 12, minWidth: 65 },
+  backText: { color: COLORS.gold, fontSize: 14, fontWeight: '700' },
+  brand: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
+  headerSpacer: { width: 65 },
+  scroll: { flex: 1 },
+  content: { paddingBottom: 45 },
+  intro: { backgroundColor: COLORS.purple, paddingHorizontal: 23, paddingTop: 29, paddingBottom: 29 },
+  eyebrow: { color: COLORS.gold, fontSize: 10, letterSpacing: 1.5, fontWeight: '800' },
+  title: { color: COLORS.white, fontSize: 30, fontWeight: '800', marginTop: 9 },
+  subtitle: { color: '#E7DDF0', fontSize: 13, lineHeight: 21, marginTop: 9 },
+  languageSwitch: { flexDirection: 'row', backgroundColor: '#4A2B6A', alignSelf: 'flex-start', borderRadius: 12, padding: 4, marginTop: 21 },
+  languageButton: { paddingHorizontal: 19, paddingVertical: 10, borderRadius: 9 },
+  languageActive: { backgroundColor: COLORS.white },
+  languageText: { color: '#F5EEF9', fontSize: 12, fontWeight: '700' },
+  languageActiveText: { color: COLORS.purple },
+  card: { backgroundColor: COLORS.white, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border, padding: 18, marginHorizontal: 17, marginTop: 17 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
+  iconCircle: { width: 37, height: 37, borderRadius: 12, backgroundColor: '#F2ECF7', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  iconText: { color: COLORS.purple, fontSize: 20, fontWeight: '800' },
+  sectionTitle: { color: COLORS.purple, fontSize: 17, fontWeight: '800', flexShrink: 1 },
+  label: { color: COLORS.ink, fontSize: 12, fontWeight: '700', marginBottom: 9 },
+  readOnlyInput: { backgroundColor: '#F4F2F0', borderColor: COLORS.border, borderWidth: 1, borderRadius: 12, color: COLORS.muted, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14 },
+  input: { backgroundColor: COLORS.white, borderColor: '#DDD3E6', borderWidth: 1, borderRadius: 12, color: COLORS.ink, paddingHorizontal: 14, paddingVertical: 13, fontSize: 14, marginBottom: 12 },
+  primaryButton: { backgroundColor: COLORS.purple, borderRadius: 12, minHeight: 46, paddingHorizontal: 18, paddingVertical: 13, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  disabledButton: { opacity: 0.5 },
+  primaryButtonText: { color: COLORS.white, fontWeight: '800', fontSize: 13 },
+  helperText: { color: COLORS.muted, fontSize: 12, lineHeight: 19, marginTop: 13 },
+  successBox: { backgroundColor: '#EEF7EF', borderRadius: 12, padding: 14, marginTop: 18, marginHorizontal: 17 },
+  successText: { color: '#25623B', fontSize: 13, lineHeight: 20 },
+  errorBox: { backgroundColor: '#FDEEEE', borderRadius: 12, padding: 14, marginTop: 18, marginHorizontal: 17 },
+  errorText: { color: COLORS.danger, fontSize: 13, lineHeight: 20 },
+  footer: { alignItems: 'center', paddingTop: 34, paddingHorizontal: 22 },
+  footerName: { fontSize: 18, fontWeight: '800', color: COLORS.purple },
+  footerTagline: { fontSize: 11, color: '#9B7A3C', textAlign: 'center', marginTop: 8 },
+  church: { fontSize: 10, color: COLORS.muted, marginTop: 8 },
+});

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
-    "version": "1.0.0",
+    "name": "WorshipVerse",
+    "slug": "worshipverse",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,16 +15,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#FFFFFF"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.anonymous.mobile"
+      "package": "in.sharonag.worshipverse"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -42,7 +40,14 @@
           ]
         }
       ],
-      "expo-sqlite"
-    ]
+      "expo-sqlite",
+      "expo-status-bar",
+      "expo-sharing"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d16e77a9-a705-423c-89e4-60031922298e"
+      }
+    }
   }
 }

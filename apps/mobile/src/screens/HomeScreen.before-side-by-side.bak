@@ -1,0 +1,397 @@
+﻿import React, { useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ImageBackground,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  Linking,
+} from 'react-native';
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
+
+type Language = 'te' | 'en';
+type HomeScreenProps = { session: Session | null; onLogin: () => void };
+
+// Keep the existing screen contracts unchanged.
+const SongsScreen = require('./SongsScreen').default as React.ComponentType<{
+  language: Language;
+  onBack: () => void;
+}>;
+const ProfileScreen = require('./ProfileScreen').default as React.ComponentType<{
+  onBack: () => void;
+}>;
+const FavouritesScreen = require('./FavouritesScreen').default as React.ComponentType<{
+  onBack: () => void;
+  onBrowseSongs: () => void;
+}>;
+const PlaylistsScreen = require('./PlaylistsScreen').default as React.ComponentType<{
+  onBack: () => void;
+}>;
+const SettingsScreen = require('./SettingsScreen').default as React.ComponentType<{
+  onBack: () => void;
+}>;
+
+const C = {
+  purple: '#24103F',
+  plum: '#32165C',
+  gold: '#D8B66C',
+  cream: '#FAF8F4',
+  muted: '#766B80',
+};
+
+export default function HomeScreen({ session, onLogin }: HomeScreenProps) {
+  // React Native 0.88 requires an instance ref, not useRef<ScrollView>.
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const [language, setLanguage] = useState<Language>('te');
+  const [songsLanguage, setSongsLanguage] = useState<Language | null>(null);
+  const [screen, setScreen] = useState<'profile' | 'favourites' | 'playlists' | 'settings' | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [loginPrompt, setLoginPrompt] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [sectionPositions, setSectionPositions] = useState({ languages: 0, features: 0 });
+  const isTe = language === 'te';
+  const email = session?.user.email ?? '';
+
+  function protectedScreen(next: NonNullable<typeof screen>) {
+    setAccountOpen(false);
+    if (!session) {
+      setLoginPrompt(true);
+      return;
+    }
+    setScreen(next);
+  }
+
+  function startLogin() {
+    setAccountOpen(false);
+    setLoginPrompt(false);
+    onLogin();
+  }
+
+  async function signOut() {
+    setSigningOut(true);
+    const { error } = await supabase.auth.signOut();
+    setSigningOut(false);
+    if (error) {
+      Alert.alert(isTe ? 'లాగౌట్ విఫలమైంది' : 'Sign out failed', error.message);
+      return;
+    }
+    setAccountOpen(false);
+  }
+
+  if (songsLanguage) {
+    return <SongsScreen language={songsLanguage} onBack={() => setSongsLanguage(null)} />;
+  }
+  if (screen === 'profile') return <ProfileScreen onBack={() => setScreen(null)} />;
+  if (screen === 'favourites') {
+    return (
+      <FavouritesScreen
+        onBack={() => setScreen(null)}
+        onBrowseSongs={() => {
+          setScreen(null);
+          setSongsLanguage('te');
+        }}
+      />
+    );
+  }
+  if (screen === 'playlists') return <PlaylistsScreen onBack={() => setScreen(null)} />;
+  if (screen === 'settings') return <SettingsScreen onBack={() => setScreen(null)} />;
+
+  return (
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Website-style two-row navigation */}
+      <View style={s.header}>
+        <TouchableOpacity
+          style={s.brand}
+          onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}
+          accessibilityRole="button"
+          accessibilityLabel="WorshipVerse home"
+        >
+          <Image source={require('../../assets/worshipverse-logo.png')} style={s.logo} />
+          <View>
+            <Text style={s.brandTitle}>WorshipVerse</Text>
+            <Text style={s.brandSub}>SHARON A.G. CHURCH</Text>
+          </View>
+        </TouchableOpacity>
+        <View style={s.headerRight}>
+          <TouchableOpacity style={s.languageButton} onPress={() => setLanguage(isTe ? 'en' : 'te')}>
+            <Text style={s.languageText}>{isTe ? 'English' : 'తెలుగు'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.avatar} onPress={() => setAccountOpen(true)} accessibilityLabel="Account menu">
+            <Text style={s.avatarText}>{email ? email[0].toUpperCase() : '☻'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={s.topNav}>
+        <TouchableOpacity style={s.topNavLink} onPress={() => scrollRef.current?.scrollTo({ y: sectionPositions.languages, animated: true })}>
+          <Text style={s.topNavText}>{isTe ? 'భాషలు' : 'Languages'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.topNavLink} onPress={() => scrollRef.current?.scrollTo({ y: sectionPositions.features, animated: true })}>
+          <Text style={s.topNavText}>{isTe ? 'ప్రత్యేకతలు' : 'Features'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.topNavLink} onPress={() => Linking.openURL('https://worshipverse-silk.vercel.app/download').catch(() => Alert.alert('Could not open the download page'))}>
+          <Text style={s.topNavText}>Download</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={s.scrollContent}
+      >
+        {/* Full-width cinematic website hero */}
+        <ImageBackground
+          source={require('../../assets/website/worshipverse-hero-artwork.png')}
+          style={s.hero}
+          resizeMode="cover"
+          imageStyle={s.heroImage}
+        >
+          <View style={s.heroOverlay}>
+            <Text style={s.eyebrow}>{isTe ? '●  ఆరాధన · స్తుతి · గీతాలు' : '●  WORSHIP · PRAISE · SONGS'}</Text>
+            <Text style={s.heroTitle}>{isTe ? 'ప్రతి పాట ఒక ప్రార్థన.' : 'Every Song, A Prayer.'}</Text>
+            <Text style={s.heroGold}>{isTe ? 'ప్రతి వాక్యం ఒక స్తుతి.' : 'Every Verse, A Praise.'}</Text>
+            <Text style={s.heroDesc}>
+              {isTe
+                ? 'తెలుగు మరియు ఆంగ్ల క్రైస్తవ ఆరాధన గీతాలను ఒకే చోట కనుగొనండి. మీ హృదయాన్ని ఆరాధనతో నింపుకోండి.'
+                : 'Discover Telugu and English Christian worship songs in one place. Let your heart sing in worship.'}
+            </Text>
+            <TouchableOpacity style={s.primaryButton} onPress={() => setSongsLanguage('te')}>
+              <Text style={s.primaryButtonText}>{isTe ? 'పాటలను అన్వేషించండి  →' : 'Explore Songs  →'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.secondaryButton} onPress={() => scrollRef.current?.scrollTo({ y: sectionPositions.languages, animated: true })}>
+              <Text style={s.secondaryButtonText}>{isTe ? '↓  మరింత తెలుసుకోండి' : '↓  Discover More'}</Text>
+            </TouchableOpacity>
+            <Text style={s.heroTags}>♫ Telugu Worship   •   ♫ English Worship   •   ✦ Praise Together</Text>
+          </View>
+        </ImageBackground>
+
+        {/* Large stacked language cards — same placement as website */}
+        <View style={s.collectionSection} onLayout={event => setSectionPositions(prev => ({ ...prev, languages: event.nativeEvent.layout.y }))}>
+          <Text style={s.sectionKicker}>{isTe ? 'ఆరాధన గీతాల సేకరణ' : 'EXPLORE THE COLLECTION'}</Text>
+          <Text style={s.sectionTitle}>{isTe ? 'మీ భాషలో ఆరాధన గీతాలు' : 'Songs in your language'}</Text>
+          <TouchableOpacity style={s.collectionCard} onPress={() => setSongsLanguage('te')} activeOpacity={0.85}>
+            <ImageBackground source={require('../../assets/website/telugu-worship.jpg')} style={s.collectionImage} imageStyle={s.collectionImageRadius} resizeMode="cover">
+              <View style={s.collectionOverlay}>
+                <Text style={s.collectionKicker}>TELUGU COLLECTION</Text>
+                <Text style={s.collectionTitle}>తెలుగు పాటలు</Text>
+                <Text style={s.collectionDesc}>Explore Telugu worship songs</Text>
+                <Text style={s.collectionArrow}>→</Text>
+              </View>
+            </ImageBackground>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.collectionCard} onPress={() => setSongsLanguage('en')} activeOpacity={0.85}>
+            <ImageBackground source={require('../../assets/website/english-worship.jpg')} style={s.collectionImage} imageStyle={s.collectionImageRadius} resizeMode="cover">
+              <View style={s.collectionOverlay}>
+                <Text style={s.collectionKicker}>ENGLISH COLLECTION</Text>
+                <Text style={s.collectionTitle}>English Songs</Text>
+                <Text style={s.collectionDesc}>Explore English worship songs</Text>
+                <Text style={s.collectionArrow}>→</Text>
+              </View>
+            </ImageBackground>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.devotionSection} onLayout={event => setSectionPositions(prev => ({ ...prev, features: event.nativeEvent.layout.y }))}>
+          <Text style={s.devotionKicker}>WORSHIPVERSE  {isTe ? 'ప్రత్యేకతలు' : 'FEATURES'}</Text>
+          <Text style={s.devotionTitle}>{isTe ? 'ఆరాధనకు మరింత దగ్గరగా' : 'Closer to Worship'}</Text>
+          <Text style={s.devotionDesc}>{isTe ? 'మీ ఆరాధన అనుభవాన్ని సులభంగా మరియు ప్రత్యేకంగా మార్చే సదుపాయాలు.' : 'Thoughtful features that make your worship experience more meaningful.'}</Text>
+        </View>
+        <View style={s.featuresGrid}>
+          <TouchableOpacity style={s.featureCard} onPress={() => setSongsLanguage('te')}>
+            <Text style={s.featureIcon}>♫</Text>
+            <Text style={s.featureTitle}>{isTe ? 'ఆరాధన గీతాలు' : 'Worship Songs'}</Text>
+            <Text style={s.featureDesc}>{isTe ? 'తెలుగు, ఆంగ్ల పాటలు' : 'Telugu & English lyrics'}</Text>
+          </TouchableOpacity>
+          <View style={s.featureCard}>
+            <Text style={s.featureIcon}>↓</Text>
+            <Text style={s.featureTitle}>{isTe ? 'ఆఫ్‌లైన్' : 'Offline Library'}</Text>
+            <Text style={s.featureDesc}>{isTe ? 'సేవ్ చేసిన పాటలు' : 'Saved lyrics on device'}</Text>
+          </View>
+          <TouchableOpacity style={s.featureCard} onPress={() => protectedScreen('favourites')}>
+            <Text style={s.featureIcon}>♡</Text>
+            <Text style={s.featureTitle}>{isTe ? 'ఇష్టమైన పాటలు' : 'Favourites'}</Text>
+            <Text style={s.featureDesc}>{isTe ? 'మీ పాటలను సేవ్ చేయండి' : 'Keep songs close'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.featureCard} onPress={() => protectedScreen('playlists')}>
+            <Text style={s.featureIcon}>☷</Text>
+            <Text style={s.featureTitle}>{isTe ? 'ప్లేలిస్టులు' : 'Playlists'}</Text>
+            <Text style={s.featureDesc}>{isTe ? 'మీ జాబితాలను సృష్టించండి' : 'Organise your songs'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ImageBackground
+          source={require('../../assets/website/worship-background.jpg')}
+          imageStyle={s.roundImage}
+          style={s.churchCard}
+        >
+          <View style={s.churchOverlay}>
+            <Text style={s.churchKicker}>SHARON A.G. CHURCH</Text>
+            <Text style={s.churchTitle}>{isTe ? 'ఆరాధనలో మాతో చేరండి' : 'Join Us in Worship'}</Text>
+            <Text style={s.churchDesc}>
+              {isTe ? 'ప్రతి పాట ఒక ప్రార్థన. ప్రతి వాక్యం ఒక స్తుతి.' : 'Every song, a prayer. Every verse, a praise.'}
+            </Text>
+            <TouchableOpacity style={s.outlineButton} onPress={() => setSongsLanguage('te')}>
+              <Text style={s.outlineButtonText}>{isTe ? 'ఇప్పుడే ప్రారంభించండి →' : 'Get Started →'}</Text>
+            </TouchableOpacity>
+          </View>
+        </ImageBackground>
+        <Text style={s.footer}>© 2026 WorshipVerse · SHARON A.G. CHURCH</Text>
+      </ScrollView>
+
+      {/* Compact bottom navigation */}
+      <View style={s.bottomNav}>
+        <TouchableOpacity style={s.navItem} onPress={() => scrollRef.current?.scrollTo({ y: 0, animated: true })}>
+          <Text style={s.navIcon}>⌂</Text><Text style={s.navLabel}>{isTe ? 'హోమ్' : 'Home'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.navItem} onPress={() => setSongsLanguage('te')}>
+          <Text style={s.navIcon}>♫</Text><Text style={s.navLabel}>తెలుగు</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.navItem} onPress={() => setSongsLanguage('en')}>
+          <Text style={s.navIcon}>♫</Text><Text style={s.navLabel}>English</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.navItem} onPress={() => protectedScreen('favourites')}>
+          <Text style={s.navIcon}>♡</Text><Text style={s.navLabel}>{isTe ? 'ఇష్టాలు' : 'Saved'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.navItem} onPress={() => protectedScreen('playlists')}>
+          <Text style={s.navIcon}>☷</Text><Text style={s.navLabel}>{isTe ? 'జాబితాలు' : 'Lists'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Account menu */}
+      <Modal visible={accountOpen} transparent animationType="fade" onRequestClose={() => setAccountOpen(false)}>
+        <View style={s.modalBackdrop}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>{isTe ? 'నా ఖాతా' : 'My Account'}</Text>
+            <Text style={s.modalEmail}>{email || (isTe ? 'అతిథి' : 'Guest')}</Text>
+            <TouchableOpacity style={s.modalOption} onPress={() => protectedScreen('profile')}>
+              <Text style={s.modalOptionText}>{isTe ? 'నా ప్రొఫైల్' : 'My Profile'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.modalOption} onPress={() => protectedScreen('favourites')}>
+              <Text style={s.modalOptionText}>{isTe ? 'ఇష్టమైన పాటలు' : 'My Favourites'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.modalOption} onPress={() => protectedScreen('playlists')}>
+              <Text style={s.modalOptionText}>{isTe ? 'నా ప్లేలిస్టులు' : 'My Playlists'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.modalOption} onPress={() => protectedScreen('settings')}>
+              <Text style={s.modalOptionText}>{isTe ? 'సెట్టింగ్స్' : 'Settings'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.modalOption} onPress={() => setAccountOpen(false)}>
+              <Text style={s.modalOptionText}>{isTe ? 'మూసివేయి' : 'Close'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.modalAction}
+              disabled={signingOut}
+              onPress={session ? signOut : startLogin}
+            >
+              {signingOut ? <ActivityIndicator color="#FFFFFF" /> : (
+                <Text style={s.modalActionText}>{session ? (isTe ? 'లాగౌట్' : 'Sign Out') : (isTe ? 'లాగిన్ / నమోదు' : 'Sign In / Sign Up')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Guest sign-in prompt, including on Expo Web */}
+      <Modal visible={loginPrompt} transparent animationType="fade" onRequestClose={() => setLoginPrompt(false)}>
+        <View style={s.modalBackdrop}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>{isTe ? 'లాగిన్ అవసరం' : 'Sign in required'}</Text>
+            <Text style={s.promptText}>
+              {isTe
+                ? 'ఇష్టమైన పాటలు, ప్లేలిస్టులు, ఖాతా వివరాల కోసం లాగిన్ చేయండి.'
+                : 'Sign in to use favourites, playlists and account features.'}
+            </Text>
+            <TouchableOpacity style={s.modalAction} onPress={startLogin}>
+              <Text style={s.modalActionText}>{isTe ? 'లాగిన్ చేయండి' : 'Sign In'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.modalOption} onPress={() => setLoginPrompt(false)}>
+              <Text style={s.modalOptionText}>{isTe ? 'రద్దు' : 'Cancel'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.cream },
+  header: { backgroundColor: C.purple, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 54 : 15, paddingBottom: 15, paddingHorizontal: 14 },
+  brand: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
+  logo: { width: 45, height: 45, borderRadius: 12, marginRight: 10 },
+  brandTitle: { fontSize: 19, color: '#FFF', fontWeight: '800' },
+  brandSub: { fontSize: 8, color: C.gold, letterSpacing: 1.4, marginTop: 2 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  languageButton: { borderWidth: 1, borderColor: C.gold, borderRadius: 22, paddingVertical: 10, paddingHorizontal: 13 },
+  languageText: { color: C.gold, fontSize: 12, fontWeight: '700' },
+  avatar: { width: 37, height: 37, backgroundColor: C.gold, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: C.purple, fontWeight: '800', fontSize: 16 },
+  topNav: { backgroundColor: C.purple, flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderTopColor: '#FFFFFF20', paddingVertical: 15 },
+  topNavLink: { paddingHorizontal: 10 },
+  topNavText: { color: '#D9CFE1', fontSize: 13 },
+  scrollContent: { paddingBottom: 0 },
+  hero: { minHeight: 575, backgroundColor: C.purple },
+  heroImage: { width: '100%' },
+  heroOverlay: { flex: 1, paddingHorizontal: 19, paddingTop: 72, paddingBottom: 22, justifyContent: 'center', backgroundColor: 'rgba(36,16,63,0.52)' },
+  eyebrow: { color: C.gold, fontSize: 11, fontWeight: '800', letterSpacing: 1, borderWidth: 1, borderColor: '#D8B66C88', borderRadius: 25, paddingVertical: 12, paddingHorizontal: 14, alignSelf: 'flex-start', overflow: 'hidden', marginBottom: 25 },
+  heroTitle: { fontSize: 39, lineHeight: 51, color: '#FFF', fontWeight: '800', maxWidth: 320 },
+  heroGold: { fontSize: 35, lineHeight: 46, color: '#E9C676', fontWeight: '800', maxWidth: 320, marginTop: 8 },
+  heroDesc: { color: '#F7ECF7', fontSize: 15, lineHeight: 27, marginTop: 23, maxWidth: 325 },
+  primaryButton: { backgroundColor: '#E9C676', alignSelf: 'flex-start', borderRadius: 28, paddingHorizontal: 24, paddingVertical: 17, marginTop: 28 },
+  primaryButtonText: { color: C.purple, fontWeight: '800', fontSize: 15 },
+  secondaryButton: { borderWidth: 1, borderColor: '#E9C676', borderRadius: 28, paddingHorizontal: 22, paddingVertical: 15, alignSelf: 'flex-start', marginTop: 12 },
+  secondaryButtonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  heroTags: { color: '#EFE3F4', fontSize: 10, marginTop: 35, lineHeight: 17 },
+  collectionSection: { backgroundColor: C.cream, paddingHorizontal: 18, paddingTop: 44, paddingBottom: 45 },
+  sectionKicker: { color: '#A3824D', fontSize: 11, letterSpacing: 2.1, fontWeight: '800' },
+  sectionTitle: { color: C.plum, fontSize: 26, fontWeight: '800', marginTop: 12, marginBottom: 26 },
+  collectionCard: { marginBottom: 15, borderRadius: 17, overflow: 'hidden', backgroundColor: C.plum, elevation: 2 },
+  collectionImage: { height: 145, width: '100%' },
+  collectionImageRadius: { borderRadius: 17 },
+  collectionOverlay: { flex: 1, backgroundColor: 'rgba(35,15,55,0.27)', justifyContent: 'center', paddingHorizontal: 19 },
+  collectionKicker: { color: '#F1C986', fontSize: 11, letterSpacing: 1.8, fontWeight: '700' },
+  collectionTitle: { color: '#FFF', fontSize: 25, fontWeight: '800', marginTop: 9 },
+  collectionDesc: { color: '#F1E8EF', fontSize: 13, marginTop: 5 },
+  collectionArrow: { color: '#FFF', position: 'absolute', right: 16, top: 52, fontSize: 23, width: 36, height: 36, textAlign: 'center', borderWidth: 1, borderColor: '#FFFFFFBB', borderRadius: 18, overflow: 'hidden' },
+  devotionSection: { backgroundColor: '#F0EEEA', paddingVertical: 46, paddingHorizontal: 22, alignItems: 'center' },
+  devotionKicker: { color: '#9C7C45', fontWeight: '800', letterSpacing: 2, fontSize: 11, textAlign: 'center' },
+  devotionTitle: { color: C.plum, fontSize: 28, fontWeight: '800', marginTop: 16, textAlign: 'center' },
+  devotionDesc: { color: C.muted, fontSize: 14, lineHeight: 23, marginTop: 14, textAlign: 'center' },
+  featuresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, backgroundColor: '#F0EEEA', paddingHorizontal: 18, paddingBottom: 34 },
+  featureCard: { backgroundColor: '#FFF', borderRadius: 16, padding: 18, width: '46%', flexGrow: 1, borderWidth: 1, borderColor: '#EEE6F1' },
+  featureIcon: { color: C.plum, fontSize: 26, marginBottom: 10 },
+  featureTitle: { color: C.plum, fontSize: 15, fontWeight: '800' },
+  featureDesc: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 5 },
+  roundImage: { borderRadius: 0 },
+  churchCard: { minHeight: 245, overflow: 'hidden' },
+  churchOverlay: { backgroundColor: 'rgba(36,16,63,0.48)', minHeight: 245, padding: 30, alignItems: 'center', justifyContent: 'center' },
+  churchKicker: { color: C.gold, fontSize: 11, letterSpacing: 2, fontWeight: '800' },
+  churchTitle: { color: '#FFF', fontSize: 26, textAlign: 'center', fontWeight: '800', marginTop: 14 },
+  churchDesc: { color: '#F5EAF5', fontSize: 14, lineHeight: 23, textAlign: 'center', marginTop: 12 },
+  outlineButton: { borderColor: C.gold, borderWidth: 1, borderRadius: 24, paddingVertical: 13, paddingHorizontal: 18, marginTop: 19 },
+  outlineButtonText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  footer: { color: '#A79BB3', fontSize: 11, textAlign: 'center', padding: 22, backgroundColor: '#1B0D2D' },
+  bottomNav: { backgroundColor: C.purple, flexDirection: 'row', borderTopColor: '#D8B66C55', borderTopWidth: 1, paddingTop: 9, paddingBottom: Platform.OS === 'ios' ? 19 : 10 },
+  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  navIcon: { color: C.gold, fontSize: 21 },
+  navLabel: { color: '#FFF', fontWeight: '600', fontSize: 10, marginTop: 3 },
+  modalBackdrop: { flex: 1, backgroundColor: '#00000099', justifyContent: 'center', padding: 22 },
+  modalCard: { backgroundColor: '#FFF', padding: 22, borderRadius: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: C.plum },
+  modalEmail: { color: C.muted, marginTop: 8, marginBottom: 13, fontSize: 12 },
+  modalOption: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#EEE8F0' },
+  modalOptionText: { color: C.plum, fontSize: 14, fontWeight: '700' },
+  modalAction: { backgroundColor: C.plum, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 15 },
+  modalActionText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
+  promptText: { color: C.muted, fontSize: 13, lineHeight: 21, marginTop: 12 },
+});

@@ -1,0 +1,709 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+
+import { supabase } from '../lib/supabase';
+import SongDetailsScreen from './SongDetailsScreen';
+
+type Language = 'te' | 'en';
+type SongFilter = 'all' | Language;
+
+type Song = {
+  id: string;
+  title: string;
+  artist: string | null;
+  language: string;
+  lyrics: string;
+  lyrics_transliteration?: string | null;
+  youtube_url: string | null;
+};
+
+type FavouriteRow = {
+  song_id: string;
+  songs: Song | Song[] | null;
+};
+
+type FavouritesScreenProps = {
+  onBack: () => void;
+  onBrowseSongs: () => void;
+};
+
+const COLORS = {
+  deep: '#24103F',
+  purple: '#32165C',
+  gold: '#D8B66C',
+  cream: '#FAF8F4',
+  white: '#FFFFFF',
+  ink: '#2E1E3A',
+  muted: '#77717F',
+  border: '#EDE6F0',
+  lilac: '#F3EFF7',
+};
+
+function normalise(value: string): string {
+  return value.normalize('NFC').toLowerCase().trim();
+}
+
+export default function FavouritesScreen({
+  onBack,
+  onBrowseSongs,
+}: FavouritesScreenProps) {
+  const [interfaceLanguage, setInterfaceLanguage] = useState<Language>('te');
+  const [filter, setFilter] = useState<SongFilter>('all');
+  const [search, setSearch] = useState('');
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [reloadCount, setReloadCount] = useState(0);
+  const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+  const [expandedSongId, setExpandedSongId] = useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<Song | null>(null);
+  const [removingSongId, setRemovingSongId] = useState<string | null>(null);
+
+  const isTe = interfaceLanguage === 'te';
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadFavourites() {
+      setLoading(true);
+      setError('');
+
+      try {
+        const { data: authData, error: authError } =
+          await supabase.auth.getUser();
+
+        if (authError) throw authError;
+        if (!authData.user) {
+          throw new Error('Please sign in to view your favourites.');
+        }
+
+        const { data, error: queryError } = await supabase
+          .from('favourites')
+          .select(`
+            song_id,
+            songs (
+              id,
+              title,
+              artist,
+              language,
+              lyrics,
+              lyrics_transliteration,
+              youtube_url
+            )
+          `)
+          .eq('user_id', authData.user.id)
+          .order('created_at', { ascending: false });
+
+        if (queryError) throw queryError;
+        if (!active) return;
+
+        const rows = (data ?? []) as unknown as FavouriteRow[];
+        const savedSongs = rows.flatMap((row) => {
+          if (!row.songs) return [];
+          return Array.isArray(row.songs) ? row.songs : [row.songs];
+        });
+
+        setSongs(savedSongs);
+      } catch (cause) {
+        if (!active) return;
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : 'Could not load your saved songs.'
+        );
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadFavourites();
+    return () => {
+      active = false;
+    };
+  }, [reloadCount]);
+
+  const filteredSongs = useMemo(() => {
+    const term = normalise(search);
+    return songs.filter((song) => {
+      if (filter !== 'all' && song.language !== filter) return false;
+      if (!term) return true;
+      return (
+        normalise(song.title).includes(term) ||
+        normalise(song.artist ?? '').includes(term)
+      );
+    });
+  }, [filter, search, songs]);
+
+  async function confirmRemove() {
+    if (!pendingRemove || removingSongId) return;
+    const songId = pendingRemove.id;
+    setRemovingSongId(songId);
+    setError('');
+
+    try {
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('Please sign in again.');
+
+      const { error: removeError } = await supabase
+        .from('favourites')
+        .delete()
+        .eq('user_id', authData.user.id)
+        .eq('song_id', songId);
+
+      if (removeError) throw removeError;
+      setSongs((current) => current.filter((song) => song.id !== songId));
+      if (expandedSongId === songId) setExpandedSongId(null);
+      setPendingRemove(null);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Could not remove this favourite.'
+      );
+      setPendingRemove(null);
+    } finally {
+      setRemovingSongId(null);
+    }
+  }
+
+  async function openYouTube(url: string) {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setError('Could not open the YouTube link.');
+    }
+  }
+
+  // Reuse the existing full lyrics view, including font controls,
+  // transliteration, YouTube and the Supabase favourite toggle.
+  if (selectedSong) {
+    return (
+      <SongDetailsScreen
+        song={selectedSong}
+        onBack={() => setSelectedSong(null)}
+        onFavouriteChange={(isFavourite) => {
+          if (!isFavourite) {
+            setSongs((current) =>
+              current.filter((song) => song.id !== selectedSong.id)
+            );
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.screen}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.deep} />
+
+      {/* Top navigation keeps the website brand and mobile back action. */}
+      <View style={styles.navbar}>
+        <TouchableOpacity
+          style={styles.brand}
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back to Home"
+        >
+          <Image
+            source={require('../../assets/worshipverse-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <View style={styles.brandCopy}>
+            <Text style={styles.brandName}>WorshipVerse</Text>
+            <Text style={styles.brandChurch}>SHARON A.G. CHURCH</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.localeButton}
+          onPress={() => setInterfaceLanguage(isTe ? 'en' : 'te')}
+        >
+          <Text style={styles.localeText}>{isTe ? 'English' : 'తెలుగు'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.pageHero}>
+          <View style={styles.decorativeCircle} />
+          <Text style={styles.heroEyebrow}>
+            {isTe ? 'మీ వ్యక్తిగత పాటల సేకరణ' : 'YOUR PERSONAL LIBRARY'}
+          </Text>
+          <Text style={styles.heroTitle}>
+            {isTe ? 'నా ఇష్టమైన పాటలు' : 'My Favourites'}
+          </Text>
+          <Text style={styles.heroDescription}>
+            {isTe
+              ? 'మీకు ఇష్టమైన ఆరాధన పాటలు అన్నీ ఒకే చోట.'
+              : 'All the worship songs you love, in one place.'}
+          </Text>
+          <View style={styles.heroActions}>
+            <View style={styles.countPill}>
+              <Text style={styles.countPillText}>
+                ♥ {songs.length} {isTe ? 'సేవ్ చేసిన పాటలు' : 'saved songs'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.browseButton}
+              onPress={onBrowseSongs}
+              accessibilityRole="button"
+            >
+              <Text style={styles.browseButtonText}>
+                {isTe ? 'పాటలు చూడండి  ›' : 'Browse songs  ›'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.toolsSection}>
+          <View style={styles.searchBox}>
+            <Text style={styles.searchIcon}>⌕</Text>
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder={
+                isTe ? 'ఇష్టమైన పాటను వెతకండి...' : 'Search saved songs...'
+              }
+              placeholderTextColor="#988FA0"
+              autoCorrect={false}
+              returnKeyType="search"
+              accessibilityLabel="Search favourite songs"
+            />
+            {search.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSearch('')}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+              >
+                <Text style={styles.clearSearch}>×</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.filters}>
+            {(['all', 'te', 'en'] as const).map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={[
+                  styles.filterTab,
+                  filter === option && styles.filterTabActive,
+                ]}
+                onPress={() => setFilter(option)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: filter === option }}
+              >
+                <Text
+                  style={[
+                    styles.filterLabel,
+                    filter === option && styles.filterLabelActive,
+                  ]}
+                >
+                  {option === 'all'
+                    ? isTe ? 'అన్నీ' : 'All'
+                    : option === 'te' ? 'తెలుగు' : 'English'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {!!error && (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity
+              onPress={() => setReloadCount((count) => count + 1)}
+              style={styles.retryButton}
+            >
+              <Text style={styles.retryText}>
+                {isTe ? 'మళ్లీ ప్రయత్నించండి' : 'Try again'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {loading ? (
+          <View style={styles.centerState}>
+            <ActivityIndicator color={COLORS.purple} size="large" />
+            <Text style={styles.stateDescription}>
+              {isTe ? 'పాటలు లోడ్ అవుతున్నాయి...' : 'Loading favourites...'}
+            </Text>
+          </View>
+        ) : !error && songs.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyHeart}>♡</Text>
+            <Text style={styles.emptyTitle}>
+              {isTe ? 'ఇష్టమైన పాటలు లేవు' : 'No favourites yet'}
+            </Text>
+            <Text style={styles.stateDescription}>
+              {isTe
+                ? 'పాటలను చూసి నచ్చిన వాటిని హృదయ గుర్తుతో సేవ్ చేయండి.'
+                : 'Browse the song library and save songs you love.'}
+            </Text>
+            <TouchableOpacity style={styles.primaryButton} onPress={onBrowseSongs}>
+              <Text style={styles.primaryButtonText}>
+                {isTe ? 'పాటలను అన్వేషించండి' : 'Explore songs'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : !loading && !error && filteredSongs.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyHeart}>⌕</Text>
+            <Text style={styles.emptyTitle}>
+              {isTe ? 'పాటలు కనబడలేదు' : 'No matching songs'}
+            </Text>
+            <Text style={styles.stateDescription}>
+              {isTe ? 'వేరే పేరుతో వెతకండి.' : 'Try a different search or filter.'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => { setSearch(''); setFilter('all'); }}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {isTe ? 'ఫిల్టర్లు తీసివేయండి' : 'Clear filters'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : !loading && (!error || songs.length > 0) && (
+          <View style={styles.listArea}>
+            <Text style={styles.listCount}>
+              {filteredSongs.length} {isTe ? 'పాటలు' : 'songs'}
+            </Text>
+            {filteredSongs.map((song) => {
+              const expanded = song.id === expandedSongId;
+              return (
+                <View key={song.id} style={styles.songCard}>
+                  <View style={styles.songRow}>
+                    <View style={styles.songIconBox}>
+                      <Text style={styles.songIcon}>♫</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.songMain}
+                      onPress={() => setSelectedSong(song)}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.songTitle} numberOfLines={2}>
+                        {song.title}
+                      </Text>
+                      <Text style={styles.songMeta} numberOfLines={1}>
+                        {song.artist || 'WorshipVerse'} ·{' '}
+                        {song.language === 'te' ? 'తెలుగు' : 'English'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.heartButton}
+                      onPress={() => setPendingRemove(song)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${song.title} from favourites`}
+                    >
+                      <Text style={styles.heartIcon}>♥</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.lyricsPreview} numberOfLines={2}>
+                    {song.lyrics?.trim() ||
+                      (isTe ? 'పాట సాహిత్యం అందుబాటులో లేదు.' : 'Lyrics not available.')}
+                  </Text>
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity
+                      style={styles.ghostButton}
+                      onPress={() =>
+                        setExpandedSongId(expanded ? null : song.id)
+                      }
+                    >
+                      <Text style={styles.ghostButtonText}>
+                        {expanded
+                          ? isTe ? 'మూసివేయి  −' : 'Hide lyrics  −'
+                          : isTe ? 'సాహిత్యం  +' : 'Quick lyrics  +'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.viewButton}
+                      onPress={() => setSelectedSong(song)}
+                    >
+                      <Text style={styles.viewButtonText}>
+                        {isTe ? 'పూర్తి పాట  ›' : 'Full song  ›'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {expanded && (
+                    <View style={styles.expandedLyricsBox}>
+                      <Text selectable style={styles.expandedLyrics}>
+                        {song.lyrics || 'Lyrics are not available.'}
+                      </Text>
+                    </View>
+                  )}
+                  {!!song.youtube_url && (
+                    <TouchableOpacity
+                      style={styles.youtubeLink}
+                      onPress={() => void openYouTube(song.youtube_url!)}
+                    >
+                      <Text style={styles.youtubeText}>
+                        ▶ {isTe ? 'యూట్యూబ్‌లో చూడండి' : 'Watch on YouTube'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        <Text style={styles.footerText}>
+          WorshipVerse · SHARON A.G. CHURCH
+        </Text>
+      </ScrollView>
+
+      {/* Cross-platform confirmation rather than relying on native-only Alert. */}
+      <Modal
+        visible={pendingRemove !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !removingSongId && setPendingRemove(null)}
+      >
+        <View style={styles.modalScrim}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalHeading}>
+              {isTe ? 'ఇష్టాల నుండి తొలగించాలా?' : 'Remove from favourites?'}
+            </Text>
+            <Text style={styles.modalDescription}>
+              {pendingRemove?.title}
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                disabled={removingSongId !== null}
+                onPress={() => setPendingRemove(null)}
+              >
+                <Text style={styles.cancelText}>
+                  {isTe ? 'రద్దు' : 'Cancel'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.removeButton}
+                disabled={removingSongId !== null}
+                onPress={() => void confirmRemove()}
+              >
+                {removingSongId ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.removeText}>
+                    {isTe ? 'తొలగించు' : 'Remove'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: COLORS.cream },
+  navbar: {
+    backgroundColor: COLORS.deep,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+    paddingBottom: 14,
+  },
+  brand: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  logo: { width: 39, height: 39, borderRadius: 10, marginRight: 9 },
+  brandCopy: { flexShrink: 1 },
+  brandName: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
+  brandChurch: {
+    color: COLORS.gold, fontSize: 8, fontWeight: '800',
+    letterSpacing: 1, marginTop: 2,
+  },
+  localeButton: {
+    borderColor: COLORS.gold, borderWidth: 1,
+    borderRadius: 16, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  localeText: { color: COLORS.gold, fontWeight: '800', fontSize: 11 },
+  scroll: { flex: 1 },
+  content: { paddingBottom: 28 },
+  pageHero: {
+    backgroundColor: COLORS.purple,
+    paddingHorizontal: 21, paddingTop: 27, paddingBottom: 24,
+    overflow: 'hidden',
+  },
+  decorativeCircle: {
+    position: 'absolute', width: 220, height: 220,
+    borderRadius: 110, borderWidth: 1, borderColor: '#FFFFFF18',
+    right: -105, top: -115,
+  },
+  heroEyebrow: {
+    color: COLORS.gold, fontSize: 10, fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  heroTitle: {
+    color: COLORS.white, fontSize: 29, lineHeight: 39,
+    fontWeight: '800', marginTop: 8,
+  },
+  heroDescription: {
+    color: '#E9DFF2', fontSize: 13, lineHeight: 20,
+    marginTop: 8,
+  },
+  heroActions: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    alignItems: 'center', gap: 10, marginTop: 17,
+  },
+  countPill: {
+    borderColor: '#FFFFFF48', borderWidth: 1,
+    borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9,
+    backgroundColor: '#FFFFFF14',
+  },
+  countPillText: { color: '#F5E4BB', fontSize: 11, fontWeight: '700' },
+  browseButton: {
+    backgroundColor: COLORS.gold, borderRadius: 12,
+    paddingHorizontal: 13, paddingVertical: 10,
+  },
+  browseButtonText: { color: COLORS.deep, fontSize: 11, fontWeight: '800' },
+  toolsSection: { paddingHorizontal: 15, paddingTop: 16 },
+  searchBox: {
+    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.white, borderRadius: 14,
+    minHeight: 48, flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 13,
+  },
+  searchIcon: { fontSize: 21, color: COLORS.purple, marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: COLORS.ink, paddingVertical: 10 },
+  clearSearch: { color: COLORS.muted, fontSize: 23, paddingHorizontal: 7 },
+  filters: {
+    flexDirection: 'row', backgroundColor: COLORS.lilac,
+    padding: 4, marginTop: 11, borderRadius: 13, gap: 5,
+  },
+  filterTab: {
+    flex: 1, paddingVertical: 10, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  filterTabActive: { backgroundColor: COLORS.purple },
+  filterLabel: { color: COLORS.purple, fontSize: 12, fontWeight: '800' },
+  filterLabelActive: { color: COLORS.white },
+  errorCard: {
+    marginHorizontal: 15, marginTop: 14, borderRadius: 12,
+    borderColor: '#E8B7B7', borderWidth: 1,
+    backgroundColor: '#FFF4F3', padding: 15,
+  },
+  errorText: { color: '#A02927', fontSize: 12, lineHeight: 19 },
+  retryButton: { marginTop: 9, alignSelf: 'flex-start' },
+  retryText: { color: COLORS.purple, fontWeight: '800', fontSize: 12 },
+  centerState: { alignItems: 'center', paddingVertical: 55 },
+  stateDescription: {
+    color: COLORS.muted, fontSize: 13, textAlign: 'center',
+    lineHeight: 21, marginTop: 13,
+  },
+  emptyCard: {
+    marginHorizontal: 15, marginTop: 22, padding: 24,
+    backgroundColor: COLORS.white, borderWidth: 1,
+    borderColor: COLORS.border, borderRadius: 18, alignItems: 'center',
+  },
+  emptyHeart: { color: COLORS.gold, fontSize: 46 },
+  emptyTitle: {
+    fontSize: 20, fontWeight: '800',
+    color: COLORS.purple, marginTop: 8, textAlign: 'center',
+  },
+  primaryButton: {
+    backgroundColor: COLORS.purple, borderRadius: 11,
+    paddingHorizontal: 18, paddingVertical: 12, marginTop: 18,
+  },
+  primaryButtonText: { color: COLORS.white, fontWeight: '800', fontSize: 12 },
+  secondaryButton: {
+    marginTop: 16, borderRadius: 10, borderWidth: 1,
+    borderColor: COLORS.purple, paddingHorizontal: 16, paddingVertical: 11,
+  },
+  secondaryButtonText: { color: COLORS.purple, fontWeight: '800', fontSize: 12 },
+  listArea: { paddingHorizontal: 15, paddingTop: 13, gap: 12 },
+  listCount: { color: COLORS.muted, fontSize: 12, fontWeight: '700' },
+  songCard: {
+    backgroundColor: COLORS.white, borderRadius: 16,
+    borderWidth: 1, borderColor: COLORS.border, padding: 15,
+  },
+  songRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  songIconBox: {
+    width: 41, height: 41, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.lilac,
+  },
+  songIcon: { color: COLORS.purple, fontSize: 22 },
+  songMain: { flex: 1, paddingTop: 1 },
+  songTitle: { color: COLORS.purple, fontSize: 17, lineHeight: 25, fontWeight: '800' },
+  songMeta: { color: COLORS.muted, marginTop: 4, fontSize: 11 },
+  heartButton: {
+    width: 37, height: 37, borderRadius: 19,
+    backgroundColor: '#FFF1F3', alignItems: 'center',
+    justifyContent: 'center', borderColor: '#F8D5DF', borderWidth: 1,
+  },
+  heartIcon: { color: '#B42349', fontSize: 19 },
+  lyricsPreview: {
+    marginTop: 11, color: '#5D5463', fontSize: 12,
+    lineHeight: 19,
+  },
+  cardActions: {
+    marginTop: 14, flexDirection: 'row',
+    alignItems: 'center', gap: 8,
+  },
+  ghostButton: {
+    borderColor: '#D9CAE4', borderWidth: 1, borderRadius: 9,
+    paddingHorizontal: 12, paddingVertical: 10,
+  },
+  ghostButtonText: { color: COLORS.purple, fontWeight: '800', fontSize: 11 },
+  viewButton: {
+    backgroundColor: COLORS.purple, borderRadius: 9,
+    paddingHorizontal: 12, paddingVertical: 11,
+  },
+  viewButtonText: { color: COLORS.white, fontWeight: '800', fontSize: 11 },
+  expandedLyricsBox: {
+    padding: 14, marginTop: 12, backgroundColor: COLORS.cream,
+    borderRadius: 10,
+  },
+  expandedLyrics: { color: COLORS.ink, fontSize: 15, lineHeight: 27 },
+  youtubeLink: { marginTop: 13, alignSelf: 'flex-start', paddingVertical: 5 },
+  youtubeText: { color: '#9E3434', fontSize: 12, fontWeight: '800' },
+  footerText: {
+    color: '#827A8A', marginTop: 28,
+    textAlign: 'center', fontSize: 10,
+  },
+  modalScrim: {
+    flex: 1, backgroundColor: '#000000A6',
+    paddingHorizontal: 22, justifyContent: 'center',
+  },
+  modalCard: { backgroundColor: COLORS.white, padding: 22, borderRadius: 20 },
+  modalHeading: { color: COLORS.purple, fontSize: 20, fontWeight: '800' },
+  modalDescription: {
+    color: COLORS.muted, fontSize: 13, lineHeight: 20, marginTop: 10,
+  },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 22 },
+  cancelButton: {
+    flex: 1, borderRadius: 11, borderColor: COLORS.border,
+    borderWidth: 1, paddingVertical: 13, alignItems: 'center',
+  },
+  cancelText: { color: COLORS.purple, fontWeight: '800' },
+  removeButton: {
+    flex: 1, borderRadius: 11, backgroundColor: '#B42349',
+    paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
+  },
+  removeText: { color: COLORS.white, fontWeight: '800' },
+});

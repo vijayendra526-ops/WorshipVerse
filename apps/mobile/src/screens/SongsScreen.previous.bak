@@ -1,0 +1,586 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ImageBackground,
+  Keyboard,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
+import Sanscript from '@indic-transliteration/sanscript';
+import { getOfflineSongs, syncOfflineSongs } from '../lib/offlineSongs';
+import SongDetailsScreen from './SongDetailsScreen';
+
+type Language = 'te' | 'en';
+
+type Song = {
+  id: string;
+  title: string;
+  artist: string | null;
+  language: string;
+  lyrics: string;
+  lyrics_transliteration?: string | null;
+  youtube_url: string | null;
+};
+
+type SongsScreenProps = {
+  language: Language;
+  initialSearch?: string;
+  onBack: () => void;
+};
+
+const COLORS = {
+  dark: '#24103F',
+  purple: '#32165C',
+  gold: '#D8B66C',
+  cream: '#FAF8F4',
+  muted: '#746D7B',
+  border: '#E9E1ED',
+};
+
+/** Search normalization works for both Telugu script and Roman letters. */
+function normalizeText(value: string): string {
+  return (value || '')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0C00-\u0C7F\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** ITRANS is an approximation: everyday Roman Telugu has many spellings. */
+function getCandidates(query: string, language: Language): string[] {
+  const candidates = [normalizeText(query)];
+  const trimmed = query.trim();
+
+  if (language === 'te' && /^[a-z\s]+$/i.test(trimmed)) {
+    try {
+      candidates.push(
+        normalizeText(Sanscript.t(trimmed, 'itrans_dravidian', 'telugu'))
+      );
+    } catch (error) {
+      console.warn('Roman Telugu search conversion:', error);
+    }
+  }
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function scoreSong(song: Song, candidates: string[], language: Language): number {
+  const title = normalizeText(song.title);
+  let romanTitle = '';
+
+  if (language === 'te' && /[\u0C00-\u0C7F]/.test(song.title)) {
+    try {
+      romanTitle = normalizeText(
+        Sanscript.t(song.title, 'telugu', 'itrans_dravidian')
+      );
+    } catch {
+      // Matching still works with the original Telugu title.
+    }
+  }
+
+  let best = 0;
+  for (const candidate of candidates) {
+    if (candidate === title) best = Math.max(best, 4);
+    else if (title.startsWith(candidate)) best = Math.max(best, 3);
+    else if (title.includes(candidate)) best = Math.max(best, 2);
+
+    if (romanTitle) {
+      if (romanTitle === candidate) best = Math.max(best, 3);
+      else if (romanTitle.includes(candidate)) best = Math.max(best, 1);
+    }
+  }
+  return best;
+}
+
+export default function SongsScreen({
+  language,
+  initialSearch = '',
+  onBack,
+}: SongsScreenProps) {
+  const [activeLanguage, setActiveLanguage] = useState<Language>(language);
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [search, setSearch] = useState(initialSearch);
+  const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
+  const [isListening, setIsListening] = useState(false);
+
+  const isTe = activeLanguage === 'te';
+
+  useEffect(() => {
+    setActiveLanguage(language);
+  }, [language]);
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results?.[0]?.transcript;
+    if (transcript) setSearch(transcript);
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setIsListening(false);
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    console.warn('Speech recognition error:', event);
+    setIsListening(false);
+  });
+
+  // Render cached results immediately, and then refresh from Supabase.
+  // A cancelled request cannot overwrite a newer language selection.
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      setLoading(true);
+      setRefreshing(false);
+      setError('');
+      setSongs([]);
+      let cached: Song[] = [];
+
+      try {
+        cached = (await getOfflineSongs(activeLanguage)) as Song[];
+        if (!active) return;
+        if (cached.length > 0) {
+          setSongs(cached);
+          setLoading(false);
+          setRefreshing(true);
+        }
+      } catch (cacheError) {
+        // Web previews may lack working SQLite; online songs can still load.
+        console.warn('Offline cache unavailable:', cacheError);
+      }
+
+      try {
+        const synced = (await syncOfflineSongs()) as Song[];
+        if (!active) return;
+        setSongs(synced.filter((song) => song.language === activeLanguage));
+        setError('');
+      } catch (syncError) {
+        console.warn('Song sync unavailable:', syncError);
+        if (!active) return;
+        if (cached.length === 0) {
+          setError(
+            isTe
+              ? 'పాటలను లోడ్ చేయలేకపోయాము. ఇంటర్నెట్ కనెక్షన్‌ను తనిఖీ చేయండి.'
+              : 'Unable to load songs. Check your internet connection.'
+          );
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [activeLanguage, retryKey]);
+
+  async function startVoiceSearch() {
+    try {
+      Keyboard.dismiss();
+      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          isTe ? 'మైక్రోఫోన్ అనుమతి' : 'Microphone permission',
+          isTe
+            ? 'వాయిస్ సెర్చ్ కోసం మైక్రోఫోన్ అనుమతి ఇవ్వండి.'
+            : 'Allow microphone access to search by voice.'
+        );
+        return;
+      }
+      setIsListening(true);
+      await ExpoSpeechRecognitionModule.start({
+        lang: isTe ? 'te-IN' : 'en-IN',
+        interimResults: false,
+        continuous: false,
+      });
+    } catch (voiceError) {
+      console.warn('Voice search unavailable:', voiceError);
+      setIsListening(false);
+      Alert.alert(
+        'Voice Search',
+        'Voice search is unavailable. Try a native development build and check microphone permissions.'
+      );
+    }
+  }
+
+  async function stopVoiceSearch() {
+    try {
+      await ExpoSpeechRecognitionModule.stop();
+    } catch (voiceError) {
+      console.warn('Could not stop voice search:', voiceError);
+    } finally {
+      setIsListening(false);
+    }
+  }
+
+  function chooseLanguage(next: Language) {
+    if (next === activeLanguage) return;
+    setActiveLanguage(next);
+    setSearch('');
+    Keyboard.dismiss();
+    if (isListening) void stopVoiceSearch();
+  }
+
+  const candidates = useMemo(
+    () => getCandidates(search, activeLanguage),
+    [search, activeLanguage]
+  );
+
+  const filteredSongs = useMemo(() => {
+    if (!candidates.length) return songs;
+    return songs
+      .map((song) => ({ song, score: scoreSong(song, candidates, activeLanguage) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ song }) => song);
+  }, [songs, candidates, activeLanguage]);
+
+  if (selectedSong) {
+    return (
+      <SongDetailsScreen
+        song={selectedSong}
+        onBack={() => setSelectedSong(null)}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.root}>
+      <ImageBackground
+        source={require('../../assets/website/worship-background.jpg')}
+        style={styles.header}
+        imageStyle={styles.headerImage}
+        resizeMode="cover"
+      >
+        <View pointerEvents="none" style={styles.headerTint} />
+        <View style={styles.topRow}>
+          <TouchableOpacity
+            onPress={onBack}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel="Back to WorshipVerse Home"
+          >
+            <Text style={styles.backLabel}>‹ {isTe ? 'వెనక్కి' : 'Back'}</Text>
+          </TouchableOpacity>
+          <View style={styles.brand}>
+            <Image
+              source={require('../../assets/worshipverse-logo.png')}
+              style={styles.logo}
+            />
+            <Text style={styles.brandName}>WorshipVerse</Text>
+          </View>
+        </View>
+        <Text style={styles.kicker}>SHARON A.G. CHURCH · SONG LIBRARY</Text>
+        <Text style={styles.heading}>
+          {isTe ? 'తెలుగు ఆరాధన గీతాలు' : 'English Worship Songs'}
+        </Text>
+        <Text style={styles.headerDescription}>
+          {isTe
+            ? 'మీకు ఇష్టమైన ఆరాధన పాటలను కనుగొనండి.'
+            : 'Discover worship songs, lyrics and praise.'}
+        </Text>
+      </ImageBackground>
+
+      <View style={styles.toolbar}>
+        <View style={styles.segmentedControl}>
+          <TouchableOpacity
+            onPress={() => chooseLanguage('te')}
+            style={[styles.segment, isTe && styles.selectedSegment]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isTe }}
+          >
+            <Text style={[styles.segmentLabel, isTe && styles.selectedSegmentLabel]}>
+              తెలుగు
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => chooseLanguage('en')}
+            style={[styles.segment, !isTe && styles.selectedSegment]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: !isTe }}
+          >
+            <Text style={[styles.segmentLabel, !isTe && styles.selectedSegmentLabel]}>
+              English
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>⌕</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder={isTe ? 'పాట పేరు వెతకండి...' : 'Search song titles...'}
+            placeholderTextColor="#8E8594"
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            accessibilityLabel="Search songs"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearch('')}
+              style={styles.clearButton}
+              accessibilityLabel="Clear search"
+            >
+              <Text style={styles.clearText}>×</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            onPress={() => void (isListening ? stopVoiceSearch() : startVoiceSearch())}
+            style={[styles.micButton, isListening && styles.micListening]}
+            accessibilityRole="button"
+            accessibilityLabel={isListening ? 'Stop voice search' : 'Start voice search'}
+          >
+            <Text style={styles.micIcon}>{isListening ? '■' : '🎙'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.statusRow}>
+          <Text style={styles.resultCount}>
+            {loading
+              ? isTe ? 'పాటలు లోడ్ అవుతున్నాయి...' : 'Loading songs...'
+              : `${filteredSongs.length} ${isTe ? 'పాటలు' : 'songs'}`}
+          </Text>
+          {refreshing ? (
+            <View style={styles.syncStatus}>
+              <ActivityIndicator color={COLORS.purple} size="small" />
+              <Text style={styles.syncText}>
+                {isTe ? 'అప్‌డేట్ అవుతోంది' : 'Syncing'}
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => setRetryKey((value) => value + 1)}
+              accessibilityLabel="Refresh songs"
+            >
+              <Text style={styles.refreshLabel}>
+                ↻ {isTe ? 'రిఫ్రెష్' : 'Refresh'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {isListening && (
+          <Text style={styles.listeningText}>
+            {isTe ? 'వింటున్నాను... మాట్లాడండి' : 'Listening... Speak now'}
+          </Text>
+        )}
+      </View>
+
+      <ScrollView
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {loading && songs.length === 0 && (
+          <View style={styles.centerState}>
+            <ActivityIndicator size="large" color={COLORS.purple} />
+            <Text style={styles.stateText}>
+              {isTe ? 'పాటలను లోడ్ చేస్తున్నాము...' : 'Loading your collection...'}
+            </Text>
+          </View>
+        )}
+
+        {!loading && !!error && songs.length === 0 && (
+          <View style={styles.centerState}>
+            <Text style={styles.emptySymbol}>!</Text>
+            <Text style={styles.stateTitle}>
+              {isTe ? 'పాటలను తెరవలేకపోయాము' : 'Songs unavailable'}
+            </Text>
+            <Text style={styles.stateText}>{error}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => setRetryKey((value) => value + 1)}
+            >
+              <Text style={styles.retryLabel}>
+                {isTe ? 'మళ్లీ ప్రయత్నించండి' : 'Try Again'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!loading && !error && filteredSongs.length === 0 && (
+          <View style={styles.centerState}>
+            <Text style={styles.emptySymbol}>♫</Text>
+            <Text style={styles.stateTitle}>
+              {search.trim()
+                ? isTe ? 'పాటలు కనబడలేదు' : 'No matching songs'
+                : isTe ? 'ఇంకా పాటలు లేవు' : 'No songs yet'}
+            </Text>
+            <Text style={styles.stateText}>
+              {search.trim()
+                ? isTe
+                  ? 'మరొక పాట పేరుతో వెతకండి.'
+                  : 'Try a different song title.'
+                : isTe
+                  ? 'కొత్త పాటలు జోడించినప్పుడు ఇక్కడ కనిపిస్తాయి.'
+                  : 'New songs will appear here when published.'}
+            </Text>
+          </View>
+        )}
+
+        {filteredSongs.map((song) => {
+          const preview = (song.lyrics || '').replace(/\s+/g, ' ').trim();
+          return (
+            <TouchableOpacity
+              key={song.id}
+              style={styles.songCard}
+              activeOpacity={0.82}
+              onPress={() => {
+                Keyboard.dismiss();
+                setSelectedSong(song);
+              }}
+            >
+              <View style={styles.musicBadge}>
+                <Text style={styles.musicIcon}>♫</Text>
+              </View>
+              <View style={styles.songBody}>
+                <Text style={styles.songTitle} numberOfLines={2}>
+                  {song.title}
+                </Text>
+                <Text style={styles.artist} numberOfLines={1}>
+                  {song.artist || 'WorshipVerse'}
+                </Text>
+                {!!preview && (
+                  <Text style={styles.lyricPreview} numberOfLines={2}>
+                    {preview}
+                  </Text>
+                )}
+                <Text style={styles.songType}>
+                  {song.language === 'te' ? 'TELUGU WORSHIP' : 'ENGLISH WORSHIP'}
+                </Text>
+              </View>
+              <View style={styles.arrowCircle}>
+                <Text style={styles.arrow}>→</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+
+        <View style={styles.footer}>
+          <Text style={styles.footerBrand}>WorshipVerse</Text>
+          <Text style={styles.footerCaption}>
+            Every Song, A Prayer. Every Verse, A Praise.
+          </Text>
+          <Text style={styles.footerChurch}>SHARON A.G. CHURCH</Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: COLORS.cream },
+  header: {
+    backgroundColor: COLORS.dark,
+    paddingHorizontal: 18,
+    paddingTop: 17,
+    paddingBottom: 22,
+  },
+  headerImage: { opacity: 1 },
+  headerTint: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(26, 9, 47, 0.32)',
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  backButton: { paddingVertical: 7, paddingRight: 12 },
+  backLabel: { color: COLORS.gold, fontSize: 14, fontWeight: '700' },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  logo: { width: 29, height: 29, borderRadius: 7 },
+  brandName: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  kicker: { color: COLORS.gold, fontSize: 9, fontWeight: '800', letterSpacing: 1.5 },
+  heading: { color: '#FFFFFF', fontWeight: '800', fontSize: 25, lineHeight: 35, marginTop: 10 },
+  headerDescription: { color: '#DDD2EA', fontSize: 12, lineHeight: 20, marginTop: 6 },
+  toolbar: { backgroundColor: COLORS.cream, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
+  segmentedControl: {
+    flexDirection: 'row', backgroundColor: '#EEE8F2', padding: 4,
+    borderRadius: 13, marginBottom: 13,
+  },
+  segment: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+  selectedSegment: { backgroundColor: COLORS.purple },
+  segmentLabel: { fontSize: 13, color: COLORS.purple, fontWeight: '700' },
+  selectedSegmentLabel: { color: '#FFFFFF' },
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF',
+    borderColor: COLORS.border, borderWidth: 1, borderRadius: 14,
+    minHeight: 52, paddingLeft: 13, paddingRight: 5,
+  },
+  searchIcon: { color: COLORS.purple, fontSize: 24, marginRight: 9 },
+  searchInput: { flex: 1, paddingVertical: 9, color: COLORS.dark, fontSize: 13, minWidth: 0 },
+  clearButton: { paddingHorizontal: 9, paddingVertical: 6 },
+  clearText: { fontSize: 19, color: COLORS.muted },
+  micButton: {
+    width: 41, height: 41, backgroundColor: COLORS.purple,
+    borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+  },
+  micListening: { backgroundColor: '#A23849' },
+  micIcon: { fontSize: 16, color: '#FFFFFF' },
+  statusRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 14, marginBottom: 5,
+  },
+  resultCount: { color: COLORS.muted, fontSize: 12, fontWeight: '600' },
+  refreshLabel: { color: COLORS.purple, fontSize: 12, fontWeight: '700' },
+  syncStatus: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  syncText: { color: COLORS.muted, fontSize: 11 },
+  listeningText: { color: '#A23849', fontSize: 12, paddingTop: 7 },
+  list: { flex: 1 },
+  listContent: { paddingHorizontal: 16, paddingTop: 11, paddingBottom: 34 },
+  songCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF',
+    borderRadius: 15, borderWidth: 1, borderColor: COLORS.border,
+    padding: 13, marginBottom: 10,
+  },
+  musicBadge: {
+    width: 41, height: 41, borderRadius: 12, backgroundColor: '#F0E9F5',
+    justifyContent: 'center', alignItems: 'center', marginRight: 11,
+    alignSelf: 'flex-start',
+  },
+  musicIcon: { fontSize: 23, color: COLORS.purple },
+  songBody: { flex: 1, minWidth: 0 },
+  songTitle: { color: COLORS.dark, fontSize: 15, fontWeight: '800', lineHeight: 23 },
+  artist: { color: COLORS.muted, fontSize: 11, marginTop: 3 },
+  lyricPreview: { color: '#817989', fontSize: 11, lineHeight: 16, marginTop: 7 },
+  songType: { color: '#9A783D', fontSize: 9, fontWeight: '800', letterSpacing: 0.7, marginTop: 9 },
+  arrowCircle: {
+    height: 29, width: 29, borderRadius: 15, borderWidth: 1,
+    borderColor: '#DED3E7', alignItems: 'center', justifyContent: 'center',
+    marginLeft: 8,
+  },
+  arrow: { fontSize: 17, color: COLORS.purple },
+  centerState: { alignItems: 'center', paddingHorizontal: 15, paddingVertical: 50 },
+  emptySymbol: { fontSize: 34, color: COLORS.gold, marginBottom: 8 },
+  stateTitle: { fontSize: 17, fontWeight: '800', color: COLORS.purple, textAlign: 'center' },
+  stateText: { fontSize: 12, lineHeight: 19, color: COLORS.muted, textAlign: 'center', marginTop: 10 },
+  retryButton: { backgroundColor: COLORS.purple, paddingHorizontal: 17, paddingVertical: 11, borderRadius: 10, marginTop: 17 },
+  retryLabel: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  footer: { alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: 27, paddingTop: 20 },
+  footerBrand: { color: COLORS.purple, fontSize: 16, fontWeight: '800' },
+  footerCaption: { color: COLORS.muted, fontSize: 11, textAlign: 'center', marginTop: 7 },
+  footerChurch: { color: '#9A783D', fontSize: 9, letterSpacing: 1.5, marginTop: 8 },
+});
