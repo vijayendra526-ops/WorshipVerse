@@ -1,4 +1,4 @@
-
+import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 import { supabase } from './supabase';
 
@@ -36,10 +36,14 @@ async function getDatabase() {
   return db;
 }
 
-// Get songs saved on this device
 export async function getOfflineSongs(
   language?: 'te' | 'en'
 ): Promise<OfflineSong[]> {
+  // Browser uses Supabase rather than native offline storage.
+  if (Platform.OS === 'web') {
+    return [];
+  }
+
   const db = await getDatabase();
 
   if (language) {
@@ -57,7 +61,6 @@ export async function getOfflineSongs(
   );
 }
 
-// Download all songs from Supabase and save them locally
 export async function syncOfflineSongs(): Promise<OfflineSong[]> {
   const { data, error } = await supabase
     .from('songs')
@@ -71,9 +74,15 @@ export async function syncOfflineSongs(): Promise<OfflineSong[]> {
   }
 
   const songs = (data ?? []) as OfflineSong[];
+
+  // Web: return online results without opening SQLite.
+  if (Platform.OS === 'web') {
+    return songs;
+  }
+
+  // Android/iOS: preserve the existing offline cache.
   const db = await getDatabase();
 
-  // Replace the local library only after Supabase returns successfully.
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM offline_songs');
 

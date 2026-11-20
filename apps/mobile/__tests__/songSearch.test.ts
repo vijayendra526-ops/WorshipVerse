@@ -1,4 +1,5 @@
-﻿import {
+/// <reference types="jest" />
+import {
   normalizeSongSearch,
   getSearchCandidates,
   scoreSearchSong,

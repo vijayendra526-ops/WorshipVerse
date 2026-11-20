@@ -1,4 +1,5 @@
-﻿import * as SQLite from 'expo-sqlite';
+/// <reference types="jest" />
+import * as SQLite from 'expo-sqlite';
 import { supabase } from '../src/lib/supabase';
 import {
   getOfflineSongs,

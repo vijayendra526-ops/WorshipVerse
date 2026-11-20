@@ -43,12 +43,29 @@ test('Song Library has a voice-search control', async ({ page }) => {
 
 test('open lyrics for a song when catalog contains songs', async ({ page }) => {
   await openSongs(page, 'te');
-  const songs = page.getByRole('button', { name: /^View song / });
-  await expect(songSearchInput(page)).toBeVisible();
-  const count = await songs.count();
-  test.skip(count === 0, 'No visible Telugu songs (network/database or catalog empty)');
+
+  const songs = page.getByRole('button', {
+    name: /^View song /,
+  });
+
+  await expect
+    .poll(async () => songs.count(), {
+      timeout: 20000,
+      intervals: [500, 1000, 2000],
+    })
+    .toBeGreaterThan(0);
+
   await songs.first().click();
-  await expect(page.getByRole('button', { name: 'Increase lyrics text size' })).toBeVisible();
-  await page.getByRole('button', { name: 'Increase lyrics text size' }).click();
-  await page.getByRole('button', { name: 'Decrease lyrics text size' }).click();
+
+  const increase = page.getByRole('button', {
+    name: 'Increase lyrics text size',
+  });
+
+  const decrease = page.getByRole('button', {
+    name: 'Decrease lyrics text size',
+  });
+
+  await expect(increase).toBeVisible();
+  await increase.click();
+  await decrease.click();
 });
