@@ -1,0 +1,32 @@
+import { test, expect } from '@playwright/test';
+import { openHome } from './helpers';
+
+test('home loads with WorshipVerse branding', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await openHome(page);
+  expect(errors).toEqual([]);
+});
+
+test('home includes both song collections', async ({ page }) => {
+  await openHome(page);
+  await expect(
+  page.getByText('తెలుగు పాటలు', { exact: true }).first()
+).toBeVisible();
+  await expect(page.getByText('English Songs', { exact: true })).toBeVisible();
+});
+
+test('home language switch changes visible copy', async ({ page }) => {
+  await openHome(page);
+  // Language control initially says English because Telugu is the default.
+  const switcher = page.getByRole('button', { name: /^(EN|ENG|English)$/i }).first();
+  await expect(switcher).toBeVisible();
+  await switcher.click();
+  await expect(page.getByRole('button', { name: /^(à°¤à±†à°²à±à°—à±|TE|à°¤à±†)$/i }).first()).toBeVisible();
+});
+
+test('home account menu opens', async ({ page }) => {
+  await openHome(page);
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await expect(page.getByText(/sign in|login|ప్రవేశ|ఖాతా|account/i).first()).toBeVisible();
+});

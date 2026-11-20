@@ -1,0 +1,54 @@
+import { test, expect } from '@playwright/test';
+import { openSongs, songSearchInput } from './helpers';
+
+test('Telugu collection opens Song Library', async ({ page }) => {
+  await openSongs(page, 'te');
+  await expect(songSearchInput(page)).toBeVisible();
+});
+
+test('English collection opens Song Library', async ({ page }) => {
+  await openSongs(page, 'en');
+  await expect(songSearchInput(page)).toBeVisible();
+});
+
+test('typing and clearing a query works', async ({ page }) => {
+  await openSongs(page);
+  const input = songSearchInput(page);
+  await input.fill('unlikely-query-987654321');
+  await expect(input).toHaveValue('unlikely-query-987654321');
+  await page.getByRole('button', { name: 'Clear search' }).click();
+  await expect(input).toHaveValue('');
+});
+
+test('Telugu script search accepts Unicode', async ({ page }) => {
+  await openSongs(page);
+  const input = songSearchInput(page);
+  await input.fill('యేసు');
+  await expect(input).toHaveValue('యేసు');
+});
+
+test('Romanized Telugu query is accepted', async ({ page }) => {
+  await openSongs(page);
+  const input = songSearchInput(page);
+  await input.fill('yesu');
+  await expect(input).toHaveValue('yesu');
+  // Checks query interaction, not search relevance for a particular song.
+});
+
+test('Song Library has a voice-search control', async ({ page }) => {
+  await openSongs(page);
+  await expect(page.getByRole('button', { name: 'Start voice search' })).toBeVisible();
+  // Don't trigger microphone permissions in the browser.
+});
+
+test('open lyrics for a song when catalog contains songs', async ({ page }) => {
+  await openSongs(page, 'te');
+  const songs = page.getByRole('button', { name: /^View song / });
+  await expect(songSearchInput(page)).toBeVisible();
+  const count = await songs.count();
+  test.skip(count === 0, 'No visible Telugu songs (network/database or catalog empty)');
+  await songs.first().click();
+  await expect(page.getByRole('button', { name: 'Increase lyrics text size' })).toBeVisible();
+  await page.getByRole('button', { name: 'Increase lyrics text size' }).click();
+  await page.getByRole('button', { name: 'Decrease lyrics text size' }).click();
+});
